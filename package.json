@@ -14,8 +14,9 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.core.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --project node",
+    "test:watch": "vitest --project node",
+    "test:browser": "vitest run --project browser",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
