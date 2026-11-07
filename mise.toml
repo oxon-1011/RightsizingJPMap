@@ -2,3 +2,15 @@
 node = "26"
 pnpm = "12.18.0"
 duckdb = "2.0.0"
+
+[tasks.pipeline]
+description = "ベースデータの生成物を最初から作り直し、検証まで行う"
+run = "bash pipeline/build.sh all"
+
+[tasks."pipeline:check"]
+description = "ベースデータの生成物を検証する"
+run = "bash pipeline/build.sh check"
+
+[tasks."pipeline:fixtures"]
+description = "生成物から tests/fixtures/ に鳥取県の分を書き出し、検証する"
+run = "bash pipeline/build.sh fixtures"
