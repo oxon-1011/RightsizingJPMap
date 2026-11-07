@@ -39,4 +39,15 @@ SELECT 'fixtures: municipal_indicators.tottori は、鳥取県と県内 19 市�
     AND (SELECT count(*) FROM (FROM muni_fx EXCEPT FROM muni WHERE starts_with(code, '31'))) = 0
     AND (SELECT count(*) FROM (FROM muni WHERE starts_with(code, '31') EXCEPT FROM muni_fx)) = 0,
     '行政区域のテスト用データが鳥取県の分と一致しない'
+  )
+UNION ALL
+SELECT 'fixtures: admin_geom.tottori は admin_geom/31.parquet と同じ区域で、GeoParquet 1.1 のメタデータを持つ',
+  (SELECT count(*) FROM read_parquet(getvariable('fixtures_dir') || '/admin_geom.tottori.parquet'))::VARCHAR,
+  must(
+    (SELECT list(code ORDER BY code) FROM read_parquet(getvariable('fixtures_dir') || '/admin_geom.tottori.parquet'))
+      = (SELECT list(code ORDER BY code) FROM read_parquet(getvariable('out_dir') || '/admin_geom/31.parquet'))
+    AND (SELECT json_extract_string(decode(value), '$.version')
+         FROM parquet_kv_metadata(getvariable('fixtures_dir') || '/admin_geom.tottori.parquet')
+         WHERE decode(key) = 'geo') = '1.1.0',
+    '区域のテスト用データが admin_geom/31.parquet と一致しない'
   );

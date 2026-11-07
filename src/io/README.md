@@ -44,6 +44,11 @@ DuckDB-WASM は受け取った ArrayBuffer を Worker に移し、呼び出し�
 DuckDB-WASM では INSTALL は要らず、LOAD が拡張（v1.5.4 の eh で約 23.6MB）を extensions.duckdb.org から取得する。
 取得の進み具合は分からないので、呼び出し側は完了を待つ間、進み具合の分からない表示を出す。
 
+`startDuckDb` は、起動の直後に `enable_geoparquet_conversion` を切る。
+v1.5.4 では、spatial 拡張を読み込んだあとに `geo` メタデータを持つ Parquet（admin_geom など）を読むと、`stoi: no conversion` で失敗するからである。
+そのため GeoParquet の `geometry` 列は BLOB（WKB）として読まれる。
+SQL では `ST_GeomFromWKB(geometry)` を通して使う。
+
 ### opfs.ts
 
 `openStorage` は、OPFS が使えれば `/rjm/` の下を使う置き場所を、使えなければメモリ上の置き場所を返す。

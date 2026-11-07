@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { commands } from "vitest/browser";
 import type { Result } from "../core/result";
 import {
   type DuckDb,
@@ -295,5 +296,59 @@ describe("loadSpatial", () => {
   it("読み込み済みなら、もう一度呼んでも成功する", async () => {
     unwrap(await loadSpatial(duck));
     unwrap(await loadSpatial(duck));
+  });
+});
+
+describe("admin_geom（GeoParquet 1.1）", () => {
+  const FIXTURE = "tests/fixtures/admin_geom.tottori.parquet";
+  // 鳥取駅は鳥取市（31201）、米子駅は米子市（31202）に入る
+  const ASSIGN = `SELECT p.label, a.code
+    FROM (VALUES ('鳥取駅', 134.2253, 35.4941), ('米子駅', 133.3305, 35.4278)) p(label, lon, lat)
+    LEFT JOIN read_parquet('admin_geom.parquet') a
+      ON ST_Contains(ST_GeomFromWKB(a.geometry), ST_Point(p.lon, p.lat))
+    ORDER BY p.label`;
+
+  const startWithFixture = async (): Promise<DuckDb> => {
+    const fresh = unwrap(await startDuckDb());
+    const text = await commands.readFile(FIXTURE, { encoding: "base64" });
+    const bytes = Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+    unwrap(await registerFile(fresh, "admin_geom.parquet", bytes));
+    return fresh;
+  };
+
+  it("geometry 列は、spatial 拡張の前後どちらで読んでも BLOB になる", async () => {
+    const fresh = await startWithFixture();
+    const describeSql = "DESCRIBE SELECT * FROM read_parquet('admin_geom.parquet')";
+    const before = unwrap(await query(fresh, describeSql));
+    unwrap(await loadSpatial(fresh));
+    const after = unwrap(await query(fresh, describeSql));
+    for (const result of [before, after]) {
+      const types = new Map(
+        valuesOf(result, "column_name").map((name, i) => [
+          name,
+          valuesOf(result, "column_type")[i],
+        ]),
+      );
+      expect(types.get("geometry")).toBe("BLOB");
+    }
+    await fresh.db.terminate();
+  });
+
+  it("spatial 拡張を先に読み込んでも、点を区域に割り当てられる", async () => {
+    const fresh = await startWithFixture();
+    unwrap(await loadSpatial(fresh));
+    const result = unwrap(await query(fresh, ASSIGN));
+    expect(valuesOf(result, "label")).toEqual(["米子駅", "鳥取駅"]);
+    expect(valuesOf(result, "code")).toEqual(["31202", "31201"]);
+    await fresh.db.terminate();
+  });
+
+  it("ファイルを先に読んでから spatial 拡張を読み込んでも、同じ結果になる", async () => {
+    const fresh = await startWithFixture();
+    unwrap(await query(fresh, "SELECT count(*) FROM read_parquet('admin_geom.parquet')"));
+    unwrap(await loadSpatial(fresh));
+    const result = unwrap(await query(fresh, ASSIGN));
+    expect(valuesOf(result, "code")).toEqual(["31202", "31201"]);
+    await fresh.db.terminate();
   });
 });

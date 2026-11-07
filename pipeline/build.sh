@@ -183,6 +183,8 @@ stage_check() {
 stage_fixtures() {
   log "fixtures：tests/fixtures/ の鳥取県の分"
   duck :memory: "$SQL_DIR/fixtures.sql"
+  # admin_geom は GeoParquet のメタデータ（geo）ごと残したいので、DuckDB で書き直さずにそのまま写す
+  cp "$OUT_DIR/admin_geom/31.parquet" "$FIXTURES_DIR/admin_geom.tottori.parquet"
   duck :memory: "$CHECK_DIR/fixtures.sql"
 }
 

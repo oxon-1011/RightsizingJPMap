@@ -50,6 +50,11 @@ const loadModules = async () => {
  *
  * 問い合わせの結果では、BIGINT と DECIMAL を DOUBLE に変換する（castBigIntToDouble、castDecimalToDouble）。
  * BigInt を core に持ち込まないためである。
+ *
+ * GeoParquet の列を GEOMETRY に変換する機能（enable_geoparquet_conversion）は、起動の直後に切る。
+ * v1.5.4 では、spatial 拡張を読み込んだあとに geo メタデータを持つ Parquet を読むと
+ * 「stoi: no conversion」で失敗するからである（docs/design/user-data.md の「点から行政区域を求める」）。
+ * GeoParquet の geometry 列は BLOB（WKB）として読まれるので、SQL で ST_GeomFromWKB を通して使う。
  */
 export const startDuckDb = async (
   options: { readonly onProgress?: (progress: StartProgress) => void } = {},
@@ -73,6 +78,7 @@ export const startDuckDb = async (
     );
     await db.open({ query: { castBigIntToDouble: true, castDecimalToDouble: true } });
     const conn = await db.connect();
+    await conn.query("SET enable_geoparquet_conversion = false");
     const version = await db.getVersion();
     return ok({
       db,
