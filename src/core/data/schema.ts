@@ -39,6 +39,21 @@ export const ADMIN_TILE_CODE_PROPERTY = "code";
 export const adminGeomFile = (prefCode: string): `admin_geom/${string}.parquet` =>
   `admin_geom/${prefCode}.parquet`;
 
+/**
+ * admin_geom/<都道府県コード>.parquet の列名。GeoParquet 1.1 で、1行が1区域。
+ * 座標は経度緯度で、crs は省いている（OGC:CRS84 とみなす）。
+ */
+export const ADMIN_GEOM_COLUMNS = {
+  /** 5桁の団体コード（VARCHAR）。admin.pmtiles の muni レイヤーの code と同じ */
+  code: "code",
+  /** 区域の名前（VARCHAR） */
+  name: "name",
+  /** 区域の形（WKB の MultiPolygon）。隣と隙間も重なりもないように簡略化してある */
+  geometry: "geometry",
+  /** 区域の範囲（xmin、ymin、xmax、ymax の DOUBLE の構造体）。GeoParquet の covering に宣言している */
+  bbox: "bbox",
+} as const;
+
 /** admin_geom/index.json の中身。2桁の都道府県コードから、その都道府県の範囲への対応 */
 export type AdminGeomIndex = Readonly<Record<string, BBox>>;
 
@@ -46,6 +61,7 @@ export type AdminGeomIndex = Readonly<Record<string, BBox>>;
  * Parquet から読んだ列を core に渡すときの型。io が列の型に応じて変換する。
  * UINTEGER は Uint32Array、FLOAT は Float32Array、BOOLEAN は Uint8Array（0 か 1）、
  * INTEGER と BIGINT は Float64Array、VARCHAR は文字列の配列にする。数値の NULL は NaN にする。
+ * UINTEGER、BOOLEAN、VARCHAR は NULL を表せないので、NULL があれば io は失敗を返す。
  */
 export type ColumnArray =
   | Uint32Array
