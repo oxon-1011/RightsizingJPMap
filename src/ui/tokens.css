@@ -1,0 +1,16 @@
+/*
+  デザイントークン（契約）。
+  名前は Phase 0 で決めた仮のもので、値はトラック C（デザイン）が決める。
+  名前を変えたり足したりするときは相談する（docs/design/implementation-plan.md）。
+  地図の塗り分けの配色は CSS ではなく core の定数に置く。
+*/
+@theme {
+  --color-surface: #ffffff;
+  --color-surface-muted: #f4f4f5;
+  --color-text: #18181b;
+  --color-text-muted: #52525b;
+  --color-border: #d4d4d8;
+  --color-accent: #2563eb;
+  --color-danger: #dc2626;
+  --font-sans: system-ui, sans-serif;
+}
