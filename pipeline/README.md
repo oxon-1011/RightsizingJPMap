@@ -36,6 +36,31 @@ mise run pipeline:fixtures   # tests/fixtures/ に鳥取県の分を書き出し
 - `.cache/`：取得した N03 と、作業用のファイル（`.cache/work/`）。Git に含めない。
 - `out/`：生成物。Git に含めず、GitHub Release のアセットとして置く。
 
+## GitHub Release への登録
+
+生成物は、データの版（`src/core/data/schema.ts` の `DATA_VERSION`）ごとに、`data-<版>` の Release のアセットとして置く。
+`data-v1` は 2026-11-07 に登録した。
+
+Release のアセットはディレクトリを持てないので、`admin_geom/` は tar にまとめる。
+中身は zstd で圧縮済みなので、tar は圧縮しない。
+macOS の拡張属性を入れないよう、次のように作る。
+
+```bash
+cd pipeline/out
+COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs --format ustar -cf admin_geom.tar admin_geom
+shasum -a 256 mesh_indicators.parquet municipal_indicators.parquet admin.pmtiles places.json admin_geom.tar > SHA256SUMS
+```
+
+登録するアセットは、`mesh_indicators.parquet`、`municipal_indicators.parquet`、`admin.pmtiles`、`admin_geom.tar`、`places.json`、`SHA256SUMS` の6つである。
+生成物は国土数値情報と社人研のデータを加工したものなので、Release の説明には出典と加工の表示を書く（書き方は `docs/user/attribution.md`）。
+
+デプロイでは、Release から取り出して `data/<版>/` に置き、`admin_geom.tar` を展開する。
+
+```bash
+gh release download data-v1 -D dist/data/v1
+cd dist/data/v1 && shasum -a 256 -c SHA256SUMS && tar -xf admin_geom.tar && rm admin_geom.tar SHA256SUMS
+```
+
 ## 生成物
 
 大きさは 2026-11-07 に `mise run pipeline` で作ったものである。
