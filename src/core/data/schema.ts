@@ -13,6 +13,9 @@ export const DATA_FILES = {
   places: "places.json",
 } as const;
 
+/** 範囲。西端の経度、南端の緯度、東端の経度、北端の緯度の順 */
+export type BBox = readonly [number, number, number, number];
+
 /** places.json の要素。場所への移動の候補（docs/design/ui.md の「場所への移動」） */
 export type Place = {
   /** 5桁の団体コード。都道府県は末尾が 000 */
@@ -20,13 +23,36 @@ export type Place = {
   readonly name: string;
   readonly pref_name: string;
   readonly kind: "prefecture" | "designated-city" | "ward" | "municipality";
-  /** 西端の経度、南端の緯度、東端の経度、北端の緯度 */
-  readonly bbox: readonly [number, number, number, number];
+  readonly bbox: BBox;
 };
 
-/** 空間結合に使う行政区域のポリゴンのファイル（都道府県ごと） */
+/** admin.pmtiles のレイヤー名 */
+export const ADMIN_TILE_LAYERS = { prefecture: "pref", municipality: "muni" } as const;
+
+/**
+ * admin.pmtiles の地物が団体コードを持つ属性の名前。MapLibre の promoteId に指定する。
+ * 値は5桁の文字列で、都道府県は末尾が 000（municipal_indicators.parquet の code と同じ）
+ */
+export const ADMIN_TILE_CODE_PROPERTY = "code";
+
+/** 空間結合に使う行政区域のポリゴンのファイル（都道府県ごと）。prefCode は2桁 */
 export const adminGeomFile = (prefCode: string): `admin_geom/${string}.parquet` =>
   `admin_geom/${prefCode}.parquet`;
+
+/** admin_geom/index.json の中身。2桁の都道府県コードから、その都道府県の範囲への対応 */
+export type AdminGeomIndex = Readonly<Record<string, BBox>>;
+
+/**
+ * Parquet から読んだ列を core に渡すときの型。io が列の型に応じて変換する。
+ * UINTEGER は Uint32Array、FLOAT は Float32Array、BOOLEAN は Uint8Array（0 か 1）、
+ * INTEGER と BIGINT は Float64Array、VARCHAR は文字列の配列にする。数値の NULL は NaN にする。
+ */
+export type ColumnArray =
+  | Uint32Array
+  | Float32Array
+  | Float64Array
+  | Uint8Array
+  | readonly string[];
 
 /** メッシュの年次（D8） */
 export const MESH_YEARS = [
