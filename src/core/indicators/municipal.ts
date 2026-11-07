@@ -44,8 +44,9 @@ export const PAINTED_AREA_TYPES: readonly AreaType[] = [
   AREA_TYPES.hamadoori,
 ];
 
-const isPainted = (areaType: string): boolean =>
-  (PAINTED_AREA_TYPES as readonly string[]).includes(areaType);
+const paintedAreaTypes: readonly string[] = PAINTED_AREA_TYPES;
+
+const isPainted = (areaType: string): boolean => paintedAreaTypes.includes(areaType);
 
 /** io が読んだ列を検査して、MunicipalTable にする。同じ団体コードと年の行が2つあれば拒否する */
 export const parseMunicipalTable = (

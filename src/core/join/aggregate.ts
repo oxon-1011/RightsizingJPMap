@@ -46,7 +46,8 @@ const sumByGroup = (
       counts[g] = (counts[g] ?? 0) + 1;
     }
   }
-  const sums: Record<string, Float64Array> = {};
+  // 列の名前は利用者のデータなので、"__proto__" などでも自身のキーになるよう fromEntries で作る
+  const entries: [string, Float64Array][] = [];
   for (const [name, values] of Object.entries(numeric)) {
     const total = new Float64Array(groupCount);
     const seen = new Uint8Array(groupCount);
@@ -58,9 +59,15 @@ const sumByGroup = (
         seen[g] = 1;
       }
     }
-    sums[name] = Float64Array.from(order, (g) => (seen[g] === 1 ? (total[g] ?? 0) : Number.NaN));
+    entries.push([
+      name,
+      Float64Array.from(order, (g) => (seen[g] === 1 ? (total[g] ?? 0) : Number.NaN)),
+    ]);
   }
-  return { counts: Float64Array.from(order, (g) => counts[g] ?? 0), sums };
+  return {
+    counts: Float64Array.from(order, (g) => counts[g] ?? 0),
+    sums: Object.fromEntries(entries),
+  };
 };
 
 /** mesh 列で結合する表を、メッシュごとに集計する */
@@ -154,7 +161,9 @@ export const measureValues = <K>(
     case "count":
       return aggregate.counts;
     case "sum":
-      return aggregate.sums[measure.column] ?? null;
+      return Object.hasOwn(aggregate.sums, measure.column)
+        ? (aggregate.sums[measure.column] ?? null)
+        : null;
     default: {
       const unreachable: never = measure;
       return unreachable;

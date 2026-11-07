@@ -206,15 +206,18 @@ const pointTable = (
     lon[i] = typeof x === "number" ? x : Number.NaN;
     lat[i] = typeof y === "number" ? y : Number.NaN;
   });
-  const numeric: Record<string, Float64Array> = {};
-  for (const { name, type } of attributes) {
-    if (type === "float") {
-      numeric[name] = Float64Array.from(properties, (props) => {
-        const value = props?.[name];
-        return typeof value === "number" ? value : Number.NaN;
-      });
-    }
-  }
+  // 属性の名前は利用者のデータなので、"__proto__" などでも自身のキーになるよう fromEntries で作る
+  const numeric = Object.fromEntries(
+    attributes
+      .filter(({ type }) => type === "float")
+      .map(({ name }) => [
+        name,
+        Float64Array.from(properties, (props) => {
+          const value = props !== null && Object.hasOwn(props, name) ? props[name] : undefined;
+          return typeof value === "number" ? value : Number.NaN;
+        }),
+      ]),
+  );
   return { lat, lon, numeric };
 };
 
@@ -262,7 +265,10 @@ export const checkGeoJson = (input: unknown): Result<AcceptedGeoJson, GeoJsonRej
       continue;
     }
     const { type: geometryType, coordinates } = isRecord(geometry) ? geometry : {};
-    const kind = typeof geometryType === "string" ? GEOMETRY_KINDS[geometryType] : undefined;
+    const kind =
+      typeof geometryType === "string" && Object.hasOwn(GEOMETRY_KINDS, geometryType)
+        ? GEOMETRY_KINDS[geometryType]
+        : undefined;
     if (typeof geometryType !== "string" || kind === undefined) {
       collectors["geometry-type"].add(i);
       continue;

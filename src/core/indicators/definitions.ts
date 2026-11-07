@@ -137,11 +137,12 @@ export const availableYears = (unit: Unit, id: IndicatorId): readonly number[] =
   }
 };
 
-const isMeshYear = (year: number): year is MeshYear =>
-  (MESH_YEARS as readonly number[]).includes(year);
+const meshYears: readonly number[] = MESH_YEARS;
+const meshAgeYears: readonly number[] = MESH_AGE_YEARS;
 
-const isMeshAgeYear = (year: number): year is MeshAgeYear =>
-  (MESH_AGE_YEARS as readonly number[]).includes(year);
+const isMeshYear = (year: number): year is MeshYear => meshYears.includes(year);
+
+const isMeshAgeYear = (year: number): year is MeshAgeYear => meshAgeYears.includes(year);
 
 /** メッシュで、ある年のある人数を表す列。秘匿の列は年齢別のときだけ付く */
 type MeshSourceColumns = { readonly value: string; readonly masked: string | null };

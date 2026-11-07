@@ -202,3 +202,23 @@ describe("checkGeoJson", () => {
     );
   });
 });
+
+describe("Object.prototype の名前", () => {
+  it("ジオメトリの種類が constructor なら、受け付けない種類として数える", () => {
+    const feature = { type: "Feature", properties: {}, geometry: { type: "constructor" } };
+    expect(checkGeoJson(collection([feature]))).toMatchObject({
+      ok: false,
+      error: { violations: [{ condition: "geometry-type", positions: [0] }] },
+    });
+  });
+
+  it("__proto__ という名前の数値の属性も、列として持つ", () => {
+    const result = checkGeoJson(collection([point(139, 35, JSON.parse('{"__proto__": 3}'))]));
+    if (!result.ok) {
+      throw new Error("失敗した");
+    }
+    const numeric = result.value.points?.numeric ?? {};
+    expect(Object.keys(numeric)).toEqual(["__proto__"]);
+    expect(Object.getPrototypeOf(numeric)).toBe(Object.prototype);
+  });
+});

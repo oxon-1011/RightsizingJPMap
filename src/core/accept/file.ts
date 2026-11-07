@@ -19,7 +19,8 @@ export type FormatRejection = { readonly stage: "format"; readonly extension: st
 export const detectFormat = (fileName: string): Result<SourceFormat, FormatRejection> => {
   const dot = fileName.lastIndexOf(".");
   const extension = dot < 0 ? "" : fileName.slice(dot + 1).toLowerCase();
-  const format = EXTENSIONS[extension];
+  // Object.prototype の名前（"constructor" など）を拡張子として引かないよう、自身のキーだけを見る
+  const format = Object.hasOwn(EXTENSIONS, extension) ? EXTENSIONS[extension] : undefined;
   return format === undefined ? err({ stage: "format", extension }) : ok(format);
 };
 

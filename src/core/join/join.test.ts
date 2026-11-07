@@ -76,6 +76,7 @@ describe("aggregateByCode", () => {
     expect([...(measureValues(result, { kind: "count" }) ?? [])]).toEqual([1]);
     expect([...(measureValues(result, { kind: "sum", column: "beds" }) ?? [])]).toEqual([7]);
     expect(measureValues(result, { kind: "sum", column: "none" })).toBeNull();
+    expect(measureValues(result, { kind: "sum", column: "constructor" })).toBeNull();
   });
 });
 
