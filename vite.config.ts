@@ -1,14 +1,47 @@
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { playwright } from "@vitest/browser-playwright";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   // GitHub Pages のプロジェクトサイト（https://oxon-1011.github.io/RightsizingJPMap/）で配信する
   base: "/RightsizingJPMap/",
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
   test: {
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    environment: "node",
+    // node は `pnpm test`（CI でも実行する）、browser は `pnpm test:browser`（Chromium が要る）で動かす
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "node",
+          include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+          exclude: [...configDefaults.exclude, "src/**/*.browser.test.ts"],
+          environment: "node",
+        },
+      },
+      {
+        extends: true,
+        // テストの途中で依存の最適化が走ると、Vite がページを読み込み直してテストが失敗するので、先に済ませておく
+        optimizeDeps: {
+          include: ["@duckdb/duckdb-wasm", "hyparquet", "hyparquet-compressors"],
+        },
+        test: {
+          name: "browser",
+          include: ["src/io/**/*.browser.test.ts"],
+          // DuckDB-WASM の起動と spatial 拡張の取得に時間がかかる
+          testTimeout: 60_000,
+          hookTimeout: 60_000,
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            instances: [{ browser: "chromium" }],
+            // 画面を見るテストではないので、失敗時のスクリーンショット（.vitest/ に書かれる）を撮らない
+            screenshotFailures: false,
+          },
+        },
+      },
+    ],
   },
 });
