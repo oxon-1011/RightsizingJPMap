@@ -9,8 +9,6 @@ import type { Rgba } from "./color";
 export type Classification = {
   readonly breaks: readonly number[];
   readonly colors: readonly Rgba[];
-  /** 区切りと配色がまだ決まっていない仮の値なら true（docs/design/README.md の「未決事項」） */
-  readonly tentative: boolean;
 };
 
 /** 値なしを表す階級の番号 */

@@ -1,7 +1,8 @@
 // 指標ごとの階級区分と配色の表。年をまたいで固定する（docs/design/map-and-hosting.md）。
-// 高齢化率は Figma のデザインで決めた値（docs/design/ui.md の「デザインで決めたこと」）。
-// それ以外は仮の値で、tentative: true を付けている。値はトラック C（デザイン）が決める。
+// 区切りと配色は持ち主が 2026-11-08 に決めた（D23、docs/design/ui.md の「塗り分けの階級と配色」）。
+// 色は DADS のプリミティブカラー（Figma の Digital Agency Design Data 2.18.2 の変数）の値である。
 
+import { BASE_YEAR } from "../data/schema";
 import type { IndicatorId, Unit } from "../indicators/definitions";
 import type { Classification } from "./classify";
 import { hex, type Rgba } from "./color";
@@ -16,91 +17,104 @@ export const DADS_ORANGE_6: readonly Rgba[] = [
   hex("#6d2700"),
 ];
 
-// TODO(トラック C): 人数の指標の配色。仮に ColorBrewer の YlGnBu（6階級）を置いている
-const SEQUENTIAL_6: readonly Rgba[] = [
-  hex("#ffffcc"),
-  hex("#c7e9b4"),
-  hex("#7fcdbb"),
-  hex("#41b6c4"),
-  hex("#2c7fb8"),
-  hex("#253494"),
+/** DADS の Purple の 100、300、500、700、900、1100。人数の指標の6階級に少ない順で使う */
+const DADS_PURPLE_6: readonly Rgba[] = [
+  hex("#ecddff"),
+  hex("#cda6ff"),
+  hex("#a565f8"),
+  hex("#6f23d0"),
+  hex("#5109ad"),
+  hex("#30016c"),
 ];
 
-// TODO(トラック C): 増減率の2方向の配色。仮に ColorBrewer の RdBu を、減少を青、増加を赤にして置いている
-const DECREASE_4: readonly Rgba[] = [
-  hex("#2166ac"),
-  hex("#4393c3"),
-  hex("#92c5de"),
-  hex("#d1e5f0"),
-];
-const INCREASE_4: readonly Rgba[] = [
-  hex("#fddbc7"),
-  hex("#f4a582"),
-  hex("#d6604d"),
-  hex("#b2182b"),
+/**
+ * 人口増減率の7階級。減少の大きい順に DADS の Red の 1100、900、700、500、300、100 を使い、
+ * 最後の「増加」の階級は Blue の 500 にする。暖色を人口が減る向きにそろえる。
+ */
+const POP_CHANGE_7: readonly Rgba[] = [
+  hex("#850000"),
+  hex("#ce0000"),
+  hex("#fa0000"),
+  hex("#ff5454"),
+  hex("#ff9696"),
+  hex("#ffdada"),
+  hex("#4979f5"),
 ];
 
-const fixed = (breaks: readonly number[], colors: readonly Rgba[]): Classification => ({
-  breaks,
-  colors,
-  tentative: false,
-});
+/**
+ * 高齢者増加率の6階級。減少の側は DADS の Blue の 900、600、300、増加の側は Orange の 300、600、900。
+ * 暖色を高齢者が増える向きにそろえる（高齢化率と同じ Orange）。
+ */
+const ELDERLY_CHANGE_6: readonly Rgba[] = [
+  hex("#0017c1"),
+  hex("#3460fb"),
+  hex("#9db7f9"),
+  hex("#ffa66d"),
+  hex("#fb5b01"),
+  hex("#ac3e00"),
+];
 
-const tentative = (breaks: readonly number[], colors: readonly Rgba[]): Classification => ({
-  breaks,
-  colors,
-  tentative: true,
-});
+/** DADS の Green の 100、300、500、700、900、1100。自前データを結合した指標に、小さい順で使う */
+export const JOINED_COLORS: readonly Rgba[] = [
+  hex("#c2e5d1"),
+  hex("#71c598"),
+  hex("#2cac6e"),
+  hex("#1d8b56"),
+  hex("#115a36"),
+  hex("#08351f"),
+];
 
 const sameForBothUnits = (c: Classification): Readonly<Record<Unit, Classification>> => ({
   mesh: c,
   municipality: c,
 });
 
-/**
- * 人数の指標の仮の区切り。1km メッシュと市区町村では人数の桁が違うので、単位ごとに持つ。
- * TODO(トラック C): 前処理（トラック A）の生成物の分布を見て決める
- */
+/** 人数の指標の区切り。1km メッシュと市区町村では人数の桁が違うので、単位ごとに持つ */
 const countScale = (
   mesh: readonly number[],
   municipality: readonly number[],
 ): Readonly<Record<Unit, Classification>> => ({
-  mesh: tentative(mesh, SEQUENTIAL_6),
-  municipality: tentative(municipality, SEQUENTIAL_6),
+  mesh: { breaks: mesh, colors: DADS_PURPLE_6 },
+  municipality: { breaks: municipality, colors: DADS_PURPLE_6 },
 });
+
+/** 総人口。1、3、10 の刻み */
+const POP_SCALE = countScale([10, 30, 100, 300, 1000], [3000, 10000, 30000, 100000, 300000]);
+
+/** 年齢別の4指標。年齢層どうしを同じ凡例で見比べられるよう、同じ区切りにする */
+const AGE_GROUP_SCALE = countScale([3, 10, 30, 100, 300], [1000, 3000, 10000, 30000, 100000]);
 
 /**
  * 指標と単位から、階級区分と配色を引く表。値は比（0.3 が 30%）か人数。
- * 区切りを差し替えるときは、この表の値だけを変える。
+ * 比率と増減率は、メッシュと市区町村で同じ区切りにする。
  */
 export const CLASSIFICATIONS: Readonly<
   Record<IndicatorId, Readonly<Record<Unit, Classification>>>
 > = {
-  aging_rate: sameForBothUnits(fixed([0.3, 0.4, 0.5, 0.6, 0.7], DADS_ORANGE_6)),
-  // TODO(トラック C): 0 を中心にした2方向。減少の側を細かく区切る仮の値
-  pop_change: sameForBothUnits(
-    tentative([-0.5, -0.3, -0.1, 0, 0.1, 0.3], [...DECREASE_4, ...INCREASE_4.slice(0, 3)]),
-  ),
-  // TODO(トラック C): 0 を中心にした2方向。増加の側を細かく区切る仮の値
-  elderly_change: sameForBothUnits(
-    tentative([-0.3, -0.1, 0, 0.1, 0.3, 0.5], [...DECREASE_4.slice(1), ...INCREASE_4]),
-  ),
-  pop: countScale([10, 100, 500, 1000, 5000], [5000, 10000, 30000, 100000, 300000]),
-  p0_14: countScale([1, 10, 50, 100, 500], [500, 1000, 3000, 10000, 30000]),
-  p15_64: countScale([5, 50, 300, 600, 3000], [3000, 6000, 20000, 60000, 200000]),
-  p65: countScale([5, 30, 150, 300, 1500], [2000, 4000, 10000, 30000, 80000]),
-  p75: countScale([3, 20, 100, 200, 1000], [1000, 2000, 6000, 15000, 50000]),
+  aging_rate: sameForBothUnits({ breaks: [0.3, 0.4, 0.5, 0.6, 0.7], colors: DADS_ORANGE_6 }),
+  pop_change: sameForBothUnits({
+    breaks: [-0.5, -0.4, -0.3, -0.2, -0.1, 0],
+    colors: POP_CHANGE_7,
+  }),
+  elderly_change: sameForBothUnits({
+    breaks: [-0.5, -0.25, 0, 0.25, 0.5],
+    colors: ELDERLY_CHANGE_6,
+  }),
+  pop: POP_SCALE,
+  p0_14: AGE_GROUP_SCALE,
+  p15_64: AGE_GROUP_SCALE,
+  p65: AGE_GROUP_SCALE,
+  p75: AGE_GROUP_SCALE,
 };
 
 export const classificationOf = (id: IndicatorId, unit: Unit): Classification =>
   CLASSIFICATIONS[id][unit];
 
 /**
- * 自前データを結合した指標（件数、合計、人口あたりの値）の配色。
- * 値の範囲が前もって分からないので、区切りは quantileBreaks で値から作る。
- * TODO(トラック C): 結合した指標の配色と、区切りの決め方（分位にするか、どの年の値で決めるか）
+ * 人口あたりの値の区切りを決めるときに使う分母の年。
+ * 結合した指標の区切りは、年次のスライダーを動かしても変えない。
  */
-export const JOINED_COLORS: readonly Rgba[] = SEQUENTIAL_6;
+export const JOINED_CLASSIFICATION_YEAR = BASE_YEAR;
 
 /**
  * 値の分位で区切りを作る。NaN は除く。重なった区切りは1つにまとめるので、区切りの数は classes - 1 以下になる。
@@ -121,8 +135,28 @@ export const quantileBreaks = (values: ArrayLike<number>, classes: number): read
   return breaks;
 };
 
-/** 分位の区切りで、結合した指標の階級区分を作る。色は区切りの数に合わせて先頭から使う */
+/**
+ * 自前データを結合した指標（件数、合計、人口あたりの値）の階級区分。
+ * 値の範囲が前もって分からないので、取り込んだデータの値から分位で区切りを作る。
+ * 値がすべて 0 以上で 0 を含むときは、0 だけの階級を最初に置き、正の値を残りの階級に分位で分ける。
+ * 点が1つもない市区町村の件数（0）を、件数の少ない市区町村と見分けられるようにするためである。
+ * 色は区切りの数に合わせて先頭から使う。
+ * 人口あたりの値には、JOINED_CLASSIFICATION_YEAR の分母で計算した値を渡す。
+ */
 export const joinedClassification = (values: ArrayLike<number>): Classification => {
-  const breaks = quantileBreaks(values, JOINED_COLORS.length);
-  return tentative(breaks, JOINED_COLORS.slice(0, breaks.length + 1));
+  const valid = Array.from(values).filter((v) => !Number.isNaN(v));
+  const zeroClass = valid.some((v) => v === 0) && valid.every((v) => v >= 0);
+  if (!zeroClass) {
+    const breaks = quantileBreaks(valid, JOINED_COLORS.length);
+    return { breaks, colors: JOINED_COLORS.slice(0, breaks.length + 1) };
+  }
+  const positives = valid.filter((v) => v > 0);
+  if (positives.length === 0) {
+    return { breaks: [], colors: JOINED_COLORS.slice(0, 1) };
+  }
+  // 区切りと同じ値は上の階級に入るので、最小の正の値を区切りにすれば 0 だけが最初の階級に残る
+  const smallest = positives.reduce((a, b) => Math.min(a, b));
+  const rest = quantileBreaks(positives, JOINED_COLORS.length - 1).filter((b) => b > smallest);
+  const breaks = [smallest, ...rest];
+  return { breaks, colors: JOINED_COLORS.slice(0, breaks.length + 1) };
 };
