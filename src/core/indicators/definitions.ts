@@ -100,6 +100,10 @@ export const INDICATORS: Readonly<Record<IndicatorId, IndicatorDefinition>> = {
   },
 };
 
+/** 人数の指標。結合した指標の、人口あたりの値の分母に選べる */
+export const POPULATION_INDICATOR_IDS = ["pop", "p0_14", "p15_64", "p65", "p75"] as const;
+export type PopulationIndicatorId = (typeof POPULATION_INDICATOR_IDS)[number];
+
 /** 指標が年齢別の値を使うか。使うなら、メッシュでは秘匿の扱い（D7）と年の制約がかかる */
 export const usesAgeGroups = (id: IndicatorId): boolean => {
   const formula = INDICATORS[id].formula;
