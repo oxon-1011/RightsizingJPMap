@@ -1,14 +1,12 @@
+// 実データにない境界（分母 0、重なった行、型の違う列）を、小さく組み立てたデータで確かめる。
+// 実データでの確認は tottori.test.ts に置いている。
+
 import { describe, expect, it } from "vitest";
-import {
-  computeMunicipalIndicator,
-  type MunicipalTable,
-  paintedMunicipalCodes,
-  parseMunicipalTable,
-} from "./municipal";
+import { computeMunicipalIndicator, type MunicipalTable, parseMunicipalTable } from "./municipal";
 
 const f64 = (...values: number[]) => Float64Array.from(values);
 
-// 鳥取県（都道府県）、鳥取市、米子市の 2025 年と 2050 年
+// 鳥取県（都道府県）、鳥取市、米子市の 2025 年と 2050 年。値は架空で、米子市の 2025 年を 0 にしてある
 const columns = {
   code: ["31000", "31201", "31202", "31000", "31201", "31202"],
   area_type: ["a", "2", "2", "a", "2", "2"],
@@ -45,24 +43,7 @@ describe("parseMunicipalTable", () => {
   });
 });
 
-describe("paintedMunicipalCodes", () => {
-  it("都道府県の行を除く", () => {
-    expect([...paintedMunicipalCodes(table())].sort()).toEqual(["31201", "31202"]);
-  });
-});
-
 describe("computeMunicipalIndicator", () => {
-  it("地図で塗る単位だけに値を付ける", () => {
-    const result = computeMunicipalIndicator(table(), "pop", 2050);
-    expect(result).toEqual({
-      ok: true,
-      value: new Map([
-        ["31201", 150000],
-        ["31202", 140000],
-      ]),
-    });
-  });
-
   it("高齢化率の分母が 0 なら NaN", () => {
     const result = computeMunicipalIndicator(table(), "aging_rate", 2025);
     if (!result.ok) {
