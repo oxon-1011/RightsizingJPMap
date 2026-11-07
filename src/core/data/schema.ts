@@ -10,7 +10,19 @@ export const DATA_FILES = {
   municipalIndicators: "municipal_indicators.parquet",
   adminTiles: "admin.pmtiles",
   adminGeomIndex: "admin_geom/index.json",
+  places: "places.json",
 } as const;
+
+/** places.json の要素。場所への移動の候補（docs/design/ui.md の「場所への移動」） */
+export type Place = {
+  /** 5桁の団体コード。都道府県は末尾が 000 */
+  readonly code: string;
+  readonly name: string;
+  readonly pref_name: string;
+  readonly kind: "prefecture" | "designated-city" | "ward" | "municipality";
+  /** 西端の経度、南端の緯度、東端の経度、北端の緯度 */
+  readonly bbox: readonly [number, number, number, number];
+};
 
 /** 空間結合に使う行政区域のポリゴンのファイル（都道府県ごと） */
 export const adminGeomFile = (prefCode: string): `admin_geom/${string}.parquet` =>
