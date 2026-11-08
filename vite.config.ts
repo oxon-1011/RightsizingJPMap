@@ -3,11 +3,18 @@ import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
 import { configDefaults, defineConfig } from "vitest/config";
+import { servePipelineData } from "./tools/serve-data";
 
 export default defineConfig({
   // GitHub Pages のプロジェクトサイト（https://oxon-1011.github.io/RightsizingJPMap/）で配信する
   base: "/RightsizingJPMap/",
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
+  plugins: [
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+    // 開発サーバーで pipeline/out/ を data/<版>/ として配る
+    servePipelineData(),
+  ],
   test: {
     // node は `pnpm test`（CI でも実行する）、browser は `pnpm test:browser`（Chromium が要る）で動かす
     projects: [
@@ -15,7 +22,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "node",
-          include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+          include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tools/**/*.test.ts"],
           exclude: [...configDefaults.exclude, "src/**/*.browser.test.ts"],
           environment: "node",
         },

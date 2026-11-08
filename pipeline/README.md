@@ -54,12 +54,17 @@ shasum -a 256 mesh_indicators.parquet municipal_indicators.parquet admin.pmtiles
 登録するアセットは、`mesh_indicators.parquet`、`municipal_indicators.parquet`、`admin.pmtiles`、`admin_geom.tar`、`places.json`、`SHA256SUMS` の6つである。
 生成物は国土数値情報と社人研のデータを加工したものなので、Release の説明には出典と加工の表示を書く（書き方は `docs/user/attribution.md`）。
 
-デプロイでは、Release から取り出して `data/<版>/` に置き、`admin_geom.tar` を展開する。
+取り出しは `download.sh` で行う。
+Release からアセットを取り出し、`SHA256SUMS` で照合してから `admin_geom.tar` を展開する。
+デプロイ（`.github/workflows/deploy.yml`）では `dist/data/<版>/` に、開発では `pipeline/out/` に置く。
 
 ```bash
-gh release download data-v1 -D dist/data/v1
-cd dist/data/v1 && shasum -a 256 -c SHA256SUMS && tar -xf admin_geom.tar && rm admin_geom.tar SHA256SUMS
+bash pipeline/download.sh --site dist   # デプロイ。dist/data/v1/ に置く
+mise run data:download                  # 開発。pipeline/out/ に置く
 ```
+
+置き場所に同じ名前のファイルがあると、`gh release download` が止まる。
+手元で作った生成物を上書きしないためである。
 
 ## 生成物
 

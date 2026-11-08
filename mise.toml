@@ -14,3 +14,7 @@ run = "bash pipeline/build.sh check"
 [tasks."pipeline:fixtures"]
 description = "生成物から tests/fixtures/ に鳥取県の分を書き出し、検証する"
 run = "bash pipeline/build.sh fixtures"
+
+[tasks."data:download"]
+description = "前処理を流さずに、GitHub Release から生成物を pipeline/out/ に取り出す"
+run = "bash pipeline/download.sh pipeline/out"
