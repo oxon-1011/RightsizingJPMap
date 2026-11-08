@@ -48,8 +48,10 @@ export type ParquetFile = {
 };
 
 export type ParquetError =
-  /** HEAD リクエストなど、ファイルの大きさを知るための通信に失敗した */
+  /** ファイルの大きさを知るための通信に失敗した */
   | { readonly kind: "fetch-failed"; readonly message: string }
+  /** サーバーが Range リクエストに 206 を返さなかった。全体を読むことになるので、読まずに止める */
+  | { readonly kind: "range-not-supported"; readonly status: number }
   /** メタデータを読めなかった（Parquet でない、壊れている、末尾の取得に失敗した） */
   | { readonly kind: "invalid-file"; readonly message: string }
   | { readonly kind: "column-not-found"; readonly column: string }
@@ -121,20 +123,49 @@ const openAsyncBuffer = async (file: AsyncBuffer): Promise<Result<ParquetFile, P
 };
 
 /**
+ * 先頭の2バイトを Range リクエストで取得し、Content-Range からファイルの大きさを知る。
+ * 1バイト（bytes=0-0）にしないのは、Vite の開発サーバーの静的ファイルの配信（sirv）が
+ * 終わりの位置の 0 を省略とみなし、ファイル全体を返すからである。
+ *
+ * HEAD リクエストは使わない。GitHub Pages は Accept-Encoding に gzip があると gzip で返し、
+ * HEAD の Content-Length も圧縮後の大きさになるからである（2026-11-09 に本番で確かめた）。
+ * ブラウザは Range を付けた要求に Accept-Encoding: identity を付けるので（Fetch の仕様）、
+ * Range リクエストの応答は圧縮されず、Content-Range の全体の大きさも元のファイルのものになる。
+ */
+const byteLengthOf = async (
+  url: string,
+  fetchFn: typeof globalThis.fetch,
+): Promise<Result<number, ParquetError>> => {
+  let response: Response;
+  try {
+    response = await fetchFn(url, { headers: { Range: "bytes=0-1" } });
+  } catch (e) {
+    return err({ kind: "fetch-failed", message: messageOf(e) });
+  }
+  await response.body?.cancel();
+  if (!response.ok) return err({ kind: "fetch-failed", message: `HTTP ${response.status}` });
+  if (response.status !== 206) return err({ kind: "range-not-supported", status: response.status });
+  const total = /\/(\d+)$/.exec(response.headers.get("Content-Range") ?? "")?.[1];
+  return total === undefined
+    ? err({ kind: "fetch-failed", message: "Content-Range から大きさを読めない" })
+    : ok(Number(total));
+};
+
+/**
  * URL の Parquet のメタデータを読む。
- * HEAD リクエストで大きさを知り、末尾のメタデータだけを Range リクエストで取得する。
+ * 先頭の2バイトの Range リクエストで大きさを知り、末尾のメタデータだけを Range リクエストで取得する。
  * fetch を渡すと、通信にそれを使う（テストで要求を記録するためなど）。
  */
 export const openParquetUrl = async (
   url: string,
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): Promise<Result<ParquetFile, ParquetError>> => {
+  const fetchFn = options.fetch ?? globalThis.fetch;
+  const byteLength = await byteLengthOf(url, fetchFn);
+  if (!byteLength.ok) return byteLength;
   let file: AsyncBuffer;
   try {
-    file = await asyncBufferFromUrl({
-      url,
-      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    });
+    file = await asyncBufferFromUrl({ url, byteLength: byteLength.value, fetch: fetchFn });
   } catch (e) {
     return err({ kind: "fetch-failed", message: messageOf(e) });
   }

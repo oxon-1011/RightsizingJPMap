@@ -18,7 +18,11 @@ hyparquet、DuckDB-WASM、OPFS、Web Locks、MapLibre、deck.gl の呼び出し�
 
 ### parquet.ts
 
-`openParquetUrl` は HEAD リクエストで大きさを知り、末尾のメタデータだけを Range リクエストで取得する。
+`openParquetUrl` は先頭の2バイトの Range リクエストで大きさを知り、末尾のメタデータだけを Range リクエストで取得する。
+HEAD リクエストは使わない。
+GitHub Pages は、gzip を受け付ける要求に gzip で返し、HEAD の Content-Length も圧縮後の大きさになるからである。
+ブラウザは Range を付けた要求には `Accept-Encoding: identity` を付けるので、Range リクエストの応答は圧縮されない。
+Range リクエストに 206 が返らないサーバーでは、全体を読まずに `range-not-supported` を返す。
 返した `ParquetFile` を `readParquetColumns` に何度渡しても、メタデータは読み直さない。
 列は `src/core/data/schema.ts` の `ColumnArray` に変換して返す。
 

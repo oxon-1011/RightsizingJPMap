@@ -160,14 +160,11 @@ describe("壊れたファイルと通信の失敗", () => {
     expect(result.error.kind).toBe("invalid-file");
   });
 
-  it("大きさを知るための HEAD リクエストが失敗すると fetch-failed になる", async () => {
+  it("大きさを知るためのリクエストが失敗すると fetch-failed になる", async () => {
     const result = await openParquetUrl("https://example.invalid/missing.parquet", {
       fetch: () => Promise.resolve(new Response(null, { status: 404 })),
     });
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "fetch-failed", message: "fetch head failed 404" },
-    });
+    expect(result).toEqual({ ok: false, error: { kind: "fetch-failed", message: "HTTP 404" } });
   });
 });
 
@@ -277,8 +274,10 @@ describe("URL から Range リクエストで読む", () => {
     expect(columns.get("b")).toEqual(expected);
 
     const gets = requests.filter((r) => r.method === "GET");
-    expect(requests[0]).toMatchObject({ method: "HEAD", status: 200, bytes: fileSize });
-    expect(gets.length).toBeGreaterThan(0);
+    // 大きさは HEAD ではなく、先頭の2バイトの Range リクエストで知る
+    expect(requests.some((r) => r.method === "HEAD")).toBe(false);
+    expect(requests[0]).toMatchObject({ method: "GET", range: "bytes=0-1", status: 206, bytes: 2 });
+    expect(gets.length).toBeGreaterThan(1);
     for (const get of gets) {
       expect(get.range).toMatch(/^bytes=\d+-\d+$/);
       expect(get.status).toBe(206);
@@ -286,5 +285,27 @@ describe("URL から Range リクエストで読む", () => {
     // 末尾の取得（既定で 512KB）と b 列の範囲だけで済み、ファイル全体は読まない
     const fetched = gets.reduce((sum, r) => sum + r.bytes, 0);
     expect(fetched).toBeLessThan(fileSize * 0.6);
+  });
+
+  it("HEAD の Content-Length が圧縮後の大きさでも、元のファイルとして読める", async () => {
+    // GitHub Pages は gzip で返せるとき、HEAD に圧縮後の大きさを返す。HEAD に頼っていないことを確かめる
+    const pagesLikeFetch: typeof globalThis.fetch = (input, init) =>
+      init?.method === "HEAD"
+        ? Promise.resolve(
+            new Response(null, {
+              headers: { "Content-Encoding": "gzip", "Content-Length": String(fileSize - 100) },
+            }),
+          )
+        : fetch(input, init);
+    const parquet = unwrap(await openParquetUrl(url, { fetch: pagesLikeFetch }));
+    const { columns } = unwrap(await readParquetColumns(parquet, ["b"]));
+    expect(columns.get("b")).toEqual(expected);
+  });
+
+  it("Range リクエストに 206 が返らなければ、全体を読まずに range-not-supported になる", async () => {
+    const result = await openParquetUrl(url, {
+      fetch: () => Promise.resolve(new Response(new Uint8Array(fileSize), { status: 200 })),
+    });
+    expect(result).toEqual({ ok: false, error: { kind: "range-not-supported", status: 200 } });
   });
 });
