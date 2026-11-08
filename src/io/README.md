@@ -90,4 +90,5 @@ pnpm test:browser
 ```
 
 `pnpm test` と `pnpm check` は node のテストだけを実行し、ブラウザのテストを含まない。
+CI では、ブラウザのテストを別のジョブ（`.github/workflows/ci.yml` の `browser`）で実行する。
 spatial 拡張のテストは extensions.duckdb.org から拡張を取得するので、ネットワークが要る。

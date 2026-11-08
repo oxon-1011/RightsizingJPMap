@@ -23,6 +23,20 @@ pnpm check
 
 `pnpm check` は lint、型検査、テストを順に実行する。
 
+### 開発中のデータ
+
+開発サーバーは、前処理の生成物（`pipeline/out/`）を、本番と同じ `data/<版>/` のパスで配る。
+前処理を流さずに開発するときは、GitHub Release から取り出す（GitHub CLI のログインが要る）。
+
+```bash
+mise run data:download
+```
+
+## 公開
+
+main の CI が通ると、`.github/workflows/deploy.yml` がアプリをビルドし、Release の生成物を足して GitHub Pages に公開する。
+公開先は <https://oxon-1011.github.io/RightsizingJPMap/> である。
+
 ## ライセンス
 
 [MIT](LICENSE)

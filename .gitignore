@@ -10,3 +10,4 @@ pipeline/out/
 
 # Vitest のブラウザモードが書き出すもの
 __screenshots__/
+.vitest/
