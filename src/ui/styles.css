@@ -1,2 +1,4 @@
 @import "tailwindcss";
+/* DADS のトークンとユーティリティ（docs/design/ui.md）。重なる名前は後の tokens.css が勝つ */
+@import "@digital-go-jp/tailwind-theme-plugin/v4";
 @import "./tokens.css";

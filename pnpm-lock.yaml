@@ -206,6 +206,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.6.5
         version: 2.6.5
+      '@digital-go-jp/tailwind-theme-plugin':
+        specifier: 2.0.0
+        version: 2.0.0(tailwindcss@4.3.4)
       '@rolldown/plugin-babel':
         specifier: 0.3.0
         version: 0.3.0(@babel/core@8.1.0)(rolldown@1.2.16)(vite@8.3.6(@types/node@25.9.9)(jiti@2.7.0))
@@ -406,6 +409,11 @@ packages:
       '@deck.gl/core': ~9.4.0
       '@luma.gl/core': ~9.4.0
       '@math.gl/web-mercator': ^4.1.0
+
+  '@digital-go-jp/tailwind-theme-plugin@2.0.0':
+    resolution: {integrity: sha512-u77xBcxBshOhV75dN/1W5eVA0R0Ko0lGwni1jnG+fN7dP1TMycmFyDsvNfiWzKCCxg2+bFRINvBjnXloLUEfHQ==}
+    peerDependencies:
+      tailwindcss: ^3.4.17 || ^4.0.0
 
   '@duckdb/duckdb-wasm@1.33.1-dev57.0':
     resolution: {integrity: sha512-ndn5l2EHq1PEMvCg8G6lRV0vjhSUcbqdM/niNBTTqH4/PyyUUVKbge0uUyCnj27b9SF/CiqBwDsgKLTqBvaxdw==}
@@ -1825,6 +1833,10 @@ snapshots:
       '@deck.gl/core': 9.4.1(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
       '@luma.gl/core': 9.4.2
       '@math.gl/web-mercator': 4.1.0
+
+  '@digital-go-jp/tailwind-theme-plugin@2.0.0(tailwindcss@4.3.4)':
+    dependencies:
+      tailwindcss: 4.3.4
 
   '@duckdb/duckdb-wasm@1.33.1-dev57.0':
     dependencies:
