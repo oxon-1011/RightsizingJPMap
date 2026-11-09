@@ -81,7 +81,9 @@ export type AppError =
   | { readonly kind: "engine"; readonly error: TableEngineError }
   | { readonly kind: "map"; readonly error: MapError }
   | { readonly kind: "tabs"; readonly error: TabsError }
-  | { readonly kind: "persistence"; readonly error: PersistError };
+  | { readonly kind: "persistence"; readonly error: PersistError }
+  /** プログラムの誤りで投げられた例外 */
+  | { readonly kind: "unexpected"; readonly message: string };
 
 /**
  * 手続きが使う副作用の口。Container は地図を描く要素の型で、ブラウザでは HTMLElement。

@@ -393,7 +393,13 @@ export const createApp = <Container>(
     setRuntime({ importing: true });
     const run = importQueue.then(async () => {
       for (const file of files) {
-        await importOne(file);
+        // 想定外の例外（プログラムの誤り）が出ても、次のファイルと次の取り込みは続ける
+        await importOne(file).catch((e: unknown) => {
+          report({
+            kind: "unexpected",
+            message: `${file.name}: ${e instanceof Error ? e.message : String(e)}`,
+          });
+        });
       }
     });
     importQueue = run.finally(() => {

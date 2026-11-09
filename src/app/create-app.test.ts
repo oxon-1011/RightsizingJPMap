@@ -319,6 +319,25 @@ describe("取り込み", () => {
     expect(ports.errors).toMatchObject([{ kind: "storage", error: { kind: "quota-exceeded" } }]);
   });
 
+  it("取り込みの途中で例外が出ても、report で知らせて次のファイルを取り込む", async () => {
+    // 計画と違う型の値を返す誤った表。core の checkTableValues が例外を投げる
+    const tables = fakeTables({
+      "broken.csv": {
+        ...CODE_TABLE,
+        values: { code: { type: "float", values: Float64Array.from([1]) } },
+      },
+    });
+    const ports = testPorts({ tables });
+    const app = createApp(ports);
+    await app.boot();
+    await app.importFiles([file("x", "broken.csv"), file(POINTS_GEOJSON, "a.geojson")]);
+    expect(ports.errors).toMatchObject([{ kind: "unexpected" }]);
+    expect(app.store.getState().state.datasets.map((d) => d.name)).toEqual(["a"]);
+    await app.importFiles([file(POINTS_GEOJSON, "b.geojson")]);
+    expect(app.store.getState().state.datasets.map((d) => d.name)).toEqual(["a", "b"]);
+    expect(app.store.getState().runtime.importing).toBe(false);
+  });
+
   it("データを消さないよう求めて断られたら、その旨を通知する", async () => {
     const app = createApp(testPorts({ grantPersistence: false }));
     await app.boot();
