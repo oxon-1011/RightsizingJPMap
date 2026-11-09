@@ -11,13 +11,12 @@ import {
 import type { DatasetStorage } from "../io/opfs";
 import { openMemoryStorage } from "../io/opfs";
 import { createApp, MESH_LAYER_ID } from "./create-app";
+import { fakeMap, type MapCall } from "./fake-map";
 import {
   fakeChannels,
   fakeLocks,
-  fakeMap,
   fakeOpfs,
   fakeTables,
-  type MapCall,
   recordStorage,
   settle,
   testPorts,

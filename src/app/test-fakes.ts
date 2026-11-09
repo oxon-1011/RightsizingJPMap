@@ -5,12 +5,11 @@ import { readFileSync } from "node:fs";
 import type { ColumnSchema, ColumnValues, TableJoinPlan } from "../core/accept/table";
 import type { BBox, Place } from "../core/data/schema";
 import type { DataFile } from "../core/data/url";
-import type { AdminFillSpec } from "../core/render/admin";
 import { err, ok, type Result } from "../core/result";
-import type { OverlayLayers } from "../io/deck-layers";
 import { type DatasetStorage, openMemoryStorage } from "../io/opfs";
 import { openParquetBuffer } from "../io/parquet";
 import type { ManifestChannel, WriterLock } from "../io/tabs";
+import { fakeMap } from "./fake-map";
 import type {
   AppError,
   AppPorts,
@@ -153,33 +152,6 @@ export const fakeChannels = () => {
     });
   };
   return { open };
-};
-
-export type MapCall =
-  | { readonly kind: "admin"; readonly spec: AdminFillSpec }
-  | { readonly kind: "overlay"; readonly layers: OverlayLayers }
-  | { readonly kind: "fit"; readonly bbox: BBox };
-
-/** 地図の偽物。渡された描画の指定を順に記録する */
-export const fakeMap = (): { readonly view: MapView; readonly calls: MapCall[] } => {
-  const calls: MapCall[] = [];
-  return {
-    calls,
-    view: {
-      setAdminFill: (spec) => {
-        calls.push({ kind: "admin", spec });
-        return ok(undefined);
-      },
-      setOverlayLayers: (layers) => {
-        calls.push({ kind: "overlay", layers });
-        return ok(undefined);
-      },
-      fitBBox: (bbox) => {
-        calls.push({ kind: "fit", bbox });
-      },
-      stop: () => undefined,
-    },
-  };
 };
 
 /** 偽物の表。columns の列を持ち、結合用の列の値と、正規化した Parquet のバイト列を決めて返す */
