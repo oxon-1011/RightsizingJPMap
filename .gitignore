@@ -6,7 +6,8 @@ coverage/
 
 # 前処理の入力（ダウンロードした元データ）と生成物
 pipeline/.cache/
-pipeline/out/
+# ワークツリーに張るシンボリックリンクも無視するよう、末尾に / を付けない
+pipeline/out
 
 # Vitest のブラウザモードが書き出すもの
 __screenshots__/
