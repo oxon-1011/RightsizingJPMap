@@ -39,6 +39,8 @@ export default defineConfig({
             "pmtiles",
             "@deck.gl/layers",
             "@deck.gl/mapbox",
+            // 依存の置き場が空のとき、テストの途中でこれを変換してページを読み込み直した（2026-11-09 の CI）
+            "react-dom/client",
           ],
         },
         test: {
