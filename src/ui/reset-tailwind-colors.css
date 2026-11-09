@@ -1,0 +1,7 @@
+/*
+  Tailwind の既定の色を消し、色は DADS のものだけにする（docs/design/ui.md）。
+  styles.css で、DADS の色を読む前に読み込む。後に読み込むと DADS の色まで消える。
+*/
+@theme {
+  --color-*: initial;
+}

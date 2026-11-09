@@ -28,17 +28,4 @@
     --font-sans は、DADS のプラグインの値（'Noto Sans JP', sans-serif）をそのまま使うので、ここでは上書きしない。
     プラグインはフォントのファイルを読み込まないので、index.html で Google Fonts から読む。
   */
-
-  /*
-    Tailwind の既定と同じ名前の色は、50〜900 が DADS の値に置き換わるが、950 は Tailwind の色のまま残る。
-    DADS にない色が混ざらないよう、950 のユーティリティを作らせない。
-  */
-  --color-red-950: initial;
-  --color-orange-950: initial;
-  --color-yellow-950: initial;
-  --color-lime-950: initial;
-  --color-green-950: initial;
-  --color-cyan-950: initial;
-  --color-blue-950: initial;
-  --color-purple-950: initial;
 }
