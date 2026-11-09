@@ -10,6 +10,7 @@ import { buildPlaceIndex, searchPlaces } from "../core/places/search";
 import { type Action, reduce, selectableYears } from "../core/state/state";
 import { AddDataButton } from "./AddDataButton";
 import { DropOverlay } from "./DropOverlay";
+import { Link } from "./dads/Link";
 import { hasFiles, nextDragDepth } from "./file-drag";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { isMacPlatform, isPlaceSearchShortcut } from "./keyboard";
@@ -43,7 +44,7 @@ const SOURCES = [
   },
 ] as const;
 
-/** 受け入れ条件の文書。TODO(段階 8): docs/user/ を公開する場所が決まったら差し替える */
+/** 受け入れ条件の文書。docs/user/ は Git で管理し、GitHub 上のページを指す（2026-11-09 に決めた） */
 const ACCEPTANCE_URL =
   "https://github.com/oxon-1011/RightsizingJPMap/blob/main/docs/user/acceptance.md";
 
@@ -165,6 +166,12 @@ export const App = () => {
           datasets={state.datasets}
           onStyleChange={(id, style) => dispatch({ type: "dataset-style-changed", id, style })}
           onRemove={(id) => dispatch({ type: "dataset-removed", id })}
+          onRemoveAll={() => {
+            // 取り込んだデータは元に戻せないので、消す前に確かめる。段階 5 で DADS のダイアログに替えるかを決める
+            if (window.confirm("取り込んだデータをすべて削除します。元に戻せません。")) {
+              dispatch({ type: "datasets-cleared" });
+            }
+          }}
         />
       </div>
 
@@ -184,9 +191,7 @@ export const App = () => {
           {SOURCES.map((s) => (
             <li key={s.url}>
               「{s.title}」（{s.owner}）（
-              <a className="text-blue-1000 underline" href={s.url}>
-                {s.url}
-              </a>
+              <Link href={s.url}>{s.url}</Link>
               ）を加工して作成
             </li>
           ))}
