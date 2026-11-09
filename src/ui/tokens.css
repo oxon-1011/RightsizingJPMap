@@ -1,16 +1,44 @@
 /*
   デザイントークン（契約）。
-  名前は Phase 0 で決めた仮のもので、値はトラック C（デザイン）が決める。
-  名前を変えたり足したりするときは相談する（docs/design/implementation-plan.md）。
-  地図の塗り分けの配色は CSS ではなく core の定数に置く。
+  名前は Phase 0 で決めた。名前を変えたり足したりするときは相談する（docs/design/implementation-plan.md）。
+  値は DADS の Tailwind CSS プラグイン（styles.css で先に読み込む）の変数を参照し、
+  Figma の画面（docs/design/ui.md の「Figma のデザイン」）で使っている DADS の変数に合わせる。
+  地図の塗り分けの配色は CSS ではなく core の定数に置く（src/core/classify/scales.ts）。
+
+  inline を付けないのは、トークンの名前を CSS 変数として残し、独自の CSS や JS からも var(--color-accent) で読めるようにするため。
+  inline にすると、ユーティリティが DADS の変数を直接参照し、--color-surface などは出力されない（2026-11-09 にビルドで確かめた）。
+  参照先の DADS の変数も :root にあるので、inline でなくても値は正しく解決される。
 */
 @theme {
-  --color-surface: #ffffff;
-  --color-surface-muted: #f4f4f5;
-  --color-text: #18181b;
-  --color-text-muted: #52525b;
-  --color-border: #d4d4d8;
-  --color-accent: #2563eb;
-  --color-danger: #dc2626;
-  --font-sans: system-ui, sans-serif;
+  /* パネルとカード：Neutral/White */
+  --color-surface: var(--color-white);
+  /* 地図の海、年次スライダーの線：Neutral/SolidGray/100 */
+  --color-surface-muted: var(--color-solid-gray-100);
+  /* 本文、選んだ年：Neutral/SolidGray/800 */
+  --color-text: var(--color-solid-gray-800);
+  /* 凡例の目盛り、出典：Neutral/SolidGray/600 */
+  --color-text-muted: var(--color-solid-gray-600);
+  /* 凡例の「なし」の枠、選べない年の目盛り：Neutral/SolidGray/420 */
+  --color-border: var(--color-solid-gray-420);
+  /* ボタン、スライダー：Key/900 */
+  --color-accent: var(--color-key-900);
+  /* 取り込めなかったときの通知の枠：Semantic/Error/1 */
+  --color-danger: var(--color-error-1);
+  /*
+    --font-sans は、DADS のプラグインの値（'Noto Sans JP', sans-serif）をそのまま使うので、ここでは上書きしない。
+    プラグインはフォントのファイルを読み込まないので、index.html で Google Fonts から読む。
+  */
+
+  /*
+    Tailwind の既定と同じ名前の色は、50〜900 が DADS の値に置き換わるが、950 は Tailwind の色のまま残る。
+    DADS にない色が混ざらないよう、950 のユーティリティを作らせない。
+  */
+  --color-red-950: initial;
+  --color-orange-950: initial;
+  --color-yellow-950: initial;
+  --color-lime-950: initial;
+  --color-green-950: initial;
+  --color-cyan-950: initial;
+  --color-blue-950: initial;
+  --color-purple-950: initial;
 }
