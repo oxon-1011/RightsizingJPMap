@@ -27,12 +27,11 @@ export const SAMPLE_DATASET: DatasetEntry = {
     { name: "名称", type: "string" },
     { name: "病床数", type: "integer" },
   ],
+  /** 04 の点の数（Figma の「Layer / 行」と同じ 160） */
+  count: 160,
   style: { color: "#0072b2", size: 4, visible: true },
   stored_format: "parquet",
 };
-
-/** 04 の点の数（Figma の「Layer / 行」と同じ 160） */
-export const SAMPLE_COUNTS: ReadonlyMap<string, number> = new Map([[SAMPLE_DATASET.id, 160]]);
 
 /** 自前データの指標を選んだときの凡例の見本。メッシュごとの件数を仮に並べた値から分位で区切る */
 export const SAMPLE_JOINED_CLASSIFICATION: Classification = joinedClassification([

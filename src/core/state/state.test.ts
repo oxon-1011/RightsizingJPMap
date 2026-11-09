@@ -22,6 +22,7 @@ const dataset = (id: string, join: DatasetEntry["join"]): DatasetEntry => ({
   kind: join.length === 2 ? "point" : "table",
   join,
   columns: [{ name: "beds", type: "integer" }],
+  count: 1,
   style: { color: "#0072b2", size: 4, visible: true },
   stored_format: "parquet",
 });
@@ -133,6 +134,27 @@ describe("指標の切り替え", () => {
       kind: "indicator-reset",
       reason: "dataset-removed",
     });
+  });
+
+  it("結合用の列（lat、lon、mesh）の合計は塗れる指標にしない", () => {
+    const points: DatasetEntry = {
+      ...dataset("points", ["mesh", "municipality"]),
+      columns: [
+        { name: "lat", type: "float" },
+        { name: "lon", type: "float" },
+        { name: "beds", type: "integer" },
+      ],
+    };
+    const sum = (column: string) =>
+      ({
+        kind: "joined",
+        datasetId: "points",
+        measure: { kind: "sum", column },
+        perPopulation: null,
+      }) as const;
+    expect(isIndicatorAvailable("mesh", sum("beds"), [points])).toBe(true);
+    expect(isIndicatorAvailable("mesh", sum("lat"), [points])).toBe(false);
+    expect(isIndicatorAvailable("municipality", sum("lon"), [points])).toBe(false);
   });
 });
 

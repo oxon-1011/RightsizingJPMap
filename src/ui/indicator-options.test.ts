@@ -7,7 +7,6 @@ import {
   denominatorKey,
   indicatorOptionGroups,
   selectionKey,
-  summableColumns,
   withDenominator,
 } from "./indicator-options";
 
@@ -18,6 +17,7 @@ const entry = (fields: Partial<DatasetEntry> & Pick<DatasetEntry, "id">): Datase
   kind: "point",
   join: ["mesh", "municipality"],
   columns: [],
+  count: 1,
   style: { color: "#0072b2", size: 4, visible: true },
   stored_format: "parquet",
   ...fields,
@@ -56,29 +56,6 @@ const geoPoints = entry({
 });
 
 const AGING: IndicatorSelection = { kind: "base", id: "aging_rate" };
-
-describe("summableColumns", () => {
-  it("表の点は lat と lon を除いた数値の列だけを合計できる", () => {
-    expect(summableColumns(clinics)).toEqual(["病床数"]);
-  });
-
-  it("GeoJSON の properties は、名前が lat でも合計できる", () => {
-    expect(summableColumns(geoPoints)).toEqual(["lat"]);
-  });
-
-  it("mesh の表は mesh の列を除く", () => {
-    const meshTable = entry({
-      id: "m",
-      kind: "table",
-      join: ["mesh"],
-      columns: [
-        { name: "mesh", type: "integer" },
-        { name: "件数", type: "integer" },
-      ],
-    });
-    expect(summableColumns(meshTable)).toEqual(["件数"]);
-  });
-});
 
 describe("indicatorOptionGroups", () => {
   it("データがなければ、ベースデータの8指標だけを並べる", () => {

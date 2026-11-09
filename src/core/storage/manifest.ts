@@ -44,6 +44,8 @@ export type DatasetEntry = {
   readonly join: readonly JoinTarget[];
   /** 列や属性の名前と型。結合用の列を含む */
   readonly columns: readonly ColumnSchema[];
+  /** 行の数（表）か地物の数（GeoJSON）。受け入れの検査が空のデータを拒否するので 1 以上 */
+  readonly count: number;
   readonly style: LayerStyle;
   readonly stored_format: StoredFormat;
 };
@@ -119,7 +121,7 @@ const parseEntry = (value: unknown, path: string): Check<DatasetEntry> => {
   if (!isRecord(value)) {
     return invalid(path);
   }
-  const { id, name, source, imported_at, kind, join, columns, style, stored_format } = value;
+  const { id, name, source, imported_at, kind, join, columns, count, style, stored_format } = value;
   if (typeof id !== "string" || !isDatasetId(id)) {
     return invalid(`${path}.id`);
   }
@@ -156,6 +158,9 @@ const parseEntry = (value: unknown, path: string): Check<DatasetEntry> => {
     }
     parsedColumns.push(parsed.value);
   }
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 1) {
+    return invalid(`${path}.count`);
+  }
   const parsedStyle = parseStyle(style, `${path}.style`);
   if (!parsedStyle.ok) {
     return parsedStyle;
@@ -171,6 +176,7 @@ const parseEntry = (value: unknown, path: string): Check<DatasetEntry> => {
     kind,
     join: join.filter((t): t is JoinTarget => oneOf<JoinTarget>(JOIN_TARGETS, t)),
     columns: parsedColumns,
+    count,
     style: parsedStyle.value,
     stored_format,
   });
@@ -299,10 +305,30 @@ export const STORED_JOIN_COLUMNS: Readonly<Record<TableJoinKind, readonly Column
   ],
 };
 
-/** 検査の結果から、目録に書く種類、結合先、列、保存の形式を決める */
+/**
+ * 結合用の列の名前。表（CSV と Parquet）は結合用の列も columns に持つので、合計の対象から除く。
+ * GeoJSON の columns は properties だけなので、何も除かない。
+ */
+const joinColumnNames = (dataset: DatasetEntry): ReadonlySet<string> => {
+  if (dataset.stored_format !== "parquet") {
+    return new Set();
+  }
+  const kind = dataset.kind === "point" ? "point" : dataset.join.includes("mesh") ? "mesh" : "code";
+  return new Set(STORED_JOIN_COLUMNS[kind].map((c) => c.name));
+};
+
+/** 合計できる列。数値の列から結合用の列を除いたもの */
+export const summableColumns = (dataset: DatasetEntry): readonly string[] => {
+  const joinColumns = joinColumnNames(dataset);
+  return dataset.columns
+    .filter((c) => (c.type === "integer" || c.type === "float") && !joinColumns.has(c.name))
+    .map((c) => c.name);
+};
+
+/** 検査の結果から、目録に書く種類、結合先、列、件数、保存の形式を決める */
 export const datasetShape = (
   accepted: AcceptedDataset,
-): Pick<DatasetEntry, "kind" | "join" | "columns" | "stored_format"> => {
+): Pick<DatasetEntry, "kind" | "join" | "columns" | "count" | "stored_format"> => {
   switch (accepted.source) {
     case "table": {
       const join = accepted.table.join.kind;
@@ -315,6 +341,7 @@ export const datasetShape = (
               ? ["mesh"]
               : ["mesh", "municipality"],
         columns: [...STORED_JOIN_COLUMNS[join], ...accepted.table.attributes],
+        count: accepted.table.rowCount,
         stored_format: "parquet",
       };
     }
@@ -324,6 +351,7 @@ export const datasetShape = (
         kind,
         join: kind === "point" ? ["mesh", "municipality"] : [],
         columns: accepted.geojson.attributes,
+        count: accepted.geojson.featureCount,
         stored_format: "geojson",
       };
     }

@@ -10,7 +10,12 @@ import {
   type Unit,
 } from "../indicators/definitions";
 import type { JoinMeasure } from "../join/aggregate";
-import type { DatasetEntry, JoinTarget, LayerStyle } from "../storage/manifest";
+import {
+  type DatasetEntry,
+  type JoinTarget,
+  type LayerStyle,
+  summableColumns,
+} from "../storage/manifest";
 
 /**
  * 選んでいる指標。ベースデータの指標か、自前データを結合した指標。
@@ -147,12 +152,7 @@ export const isIndicatorAvailable = (
         return false;
       }
       const { measure } = indicator;
-      return (
-        measure.kind === "count" ||
-        dataset.columns.some(
-          (c) => c.name === measure.column && (c.type === "integer" || c.type === "float"),
-        )
-      );
+      return measure.kind === "count" || summableColumns(dataset).includes(measure.column);
     }
     default: {
       const unreachable: never = indicator;

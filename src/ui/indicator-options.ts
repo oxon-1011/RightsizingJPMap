@@ -10,7 +10,7 @@ import {
 } from "../core/indicators/definitions";
 import type { JoinMeasure } from "../core/join/aggregate";
 import { type IndicatorSelection, isIndicatorAvailable } from "../core/state/state";
-import { type DatasetEntry, STORED_JOIN_COLUMNS } from "../core/storage/manifest";
+import { type DatasetEntry, summableColumns } from "../core/storage/manifest";
 
 export type IndicatorOption = {
   readonly key: string;
@@ -38,26 +38,6 @@ export const selectionKey = (selection: IndicatorSelection): string => {
       return unreachable;
     }
   }
-};
-
-/**
- * 結合用の列の名前。表（CSV と Parquet）は結合用の列も columns に持つので、合計の選択肢から除く。
- * GeoJSON の columns は properties だけなので、何も除かない。
- */
-const joinColumnNames = (dataset: DatasetEntry): ReadonlySet<string> => {
-  if (dataset.stored_format !== "parquet") {
-    return new Set();
-  }
-  const kind = dataset.kind === "point" ? "point" : dataset.join.includes("mesh") ? "mesh" : "code";
-  return new Set(STORED_JOIN_COLUMNS[kind].map((c) => c.name));
-};
-
-/** 合計できる列。数値の列から結合用の列を除いたもの */
-export const summableColumns = (dataset: DatasetEntry): readonly string[] => {
-  const joinColumns = joinColumnNames(dataset);
-  return dataset.columns
-    .filter((c) => (c.type === "integer" || c.type === "float") && !joinColumns.has(c.name))
-    .map((c) => c.name);
 };
 
 const measureLabel = (measure: JoinMeasure): string =>

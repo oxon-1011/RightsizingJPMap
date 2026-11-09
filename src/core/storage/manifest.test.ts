@@ -13,6 +13,7 @@ import {
   parseManifest,
   removeDataset,
   serializeManifest,
+  summableColumns,
   updateDatasetStyle,
 } from "./manifest";
 
@@ -28,6 +29,7 @@ const entry = (id: string, overrides: Partial<DatasetEntry> = {}): DatasetEntry 
     { name: "lon", type: "float" },
     { name: "beds", type: "integer" },
   ],
+  count: 12,
   style: { color: "#0072b2", size: 4, visible: true },
   stored_format: "parquet",
   ...overrides,
@@ -85,6 +87,12 @@ describe("parseManifest", () => {
       ok: false,
       error: { kind: "invalid", path: "datasets[1].imported_at" },
     });
+    for (const count of [0, 1.5, "12", undefined]) {
+      expect(bad({ count })).toEqual({
+        ok: false,
+        error: { kind: "invalid", path: "datasets[1].count" },
+      });
+    }
     expect(bad({ columns: [{ name: "x", type: "date" }] })).toEqual({
       ok: false,
       error: { kind: "invalid", path: "datasets[1].columns[0].type" },
@@ -176,6 +184,7 @@ describe("目録の操作", () => {
         { name: "lon", type: "float" },
         { name: "beds", type: "integer" },
       ],
+      count: 1,
       style: { color: LAYER_COLORS[0], size: 4, visible: true },
       stored_format: "parquet",
     });
@@ -193,6 +202,45 @@ describe("目録の操作", () => {
       },
       existing: [],
     });
-    expect(created).toMatchObject({ kind: "polygon", join: [], stored_format: "geojson" });
+    expect(created).toMatchObject({
+      kind: "polygon",
+      join: [],
+      count: 1,
+      stored_format: "geojson",
+    });
+  });
+});
+
+describe("summableColumns", () => {
+  it("表の点は lat と lon を除いた数値の列だけを合計できる", () => {
+    const clinics = entry("clinics", {
+      columns: [
+        { name: "lat", type: "float" },
+        { name: "lon", type: "float" },
+        { name: "病床数", type: "integer" },
+        { name: "名称", type: "string" },
+      ],
+    });
+    expect(summableColumns(clinics)).toEqual(["病床数"]);
+  });
+
+  it("GeoJSON の properties は、名前が lat でも合計できる", () => {
+    const geoPoints = entry("geo", {
+      stored_format: "geojson",
+      columns: [{ name: "lat", type: "float" }],
+    });
+    expect(summableColumns(geoPoints)).toEqual(["lat"]);
+  });
+
+  it("mesh の表は mesh の列を除く", () => {
+    const meshTable = entry("m", {
+      kind: "table",
+      join: ["mesh"],
+      columns: [
+        { name: "mesh", type: "integer" },
+        { name: "件数", type: "integer" },
+      ],
+    });
+    expect(summableColumns(meshTable)).toEqual(["件数"]);
   });
 });

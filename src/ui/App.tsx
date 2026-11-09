@@ -18,7 +18,6 @@ import { NoticeList } from "./NoticeList";
 import { PlaceSearch } from "./PlaceSearch";
 import {
   parseSampleScreen,
-  SAMPLE_COUNTS,
   SAMPLE_JOINED_CLASSIFICATION,
   SAMPLE_PLACES,
   sampleState,
@@ -164,7 +163,6 @@ export const App = () => {
         <AddDataButton onFiles={(files) => handleFiles(dispatch, files)} />
         <LayerPanel
           datasets={state.datasets}
-          counts={SAMPLE_COUNTS}
           onStyleChange={(id, style) => dispatch({ type: "dataset-style-changed", id, style })}
           onRemove={(id) => dispatch({ type: "dataset-removed", id })}
         />

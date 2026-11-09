@@ -7,8 +7,6 @@ import { TrashIcon, VisibilityIcon, VisibilityOffIcon } from "./icons";
 
 type LayerPanelProps = {
   datasets: readonly DatasetEntry[];
-  /** データごとの件数（行か地物の数）。目録に件数がないので app が渡す。分からなければ出さない */
-  counts: ReadonlyMap<string, number>;
   onStyleChange: (id: string, style: Partial<LayerStyle>) => void;
   onRemove: (id: string) => void;
 };
@@ -24,14 +22,12 @@ const iconButtonStyle = `
 
 const LayerRow = ({
   dataset,
-  count,
   onStyleChange,
   onRemove,
 }: {
   dataset: DatasetEntry;
-  count: number | undefined;
 } & Pick<LayerPanelProps, "onStyleChange" | "onRemove">) => {
-  const { id, name, style } = dataset;
+  const { id, name, count, style } = dataset;
   return (
     <li className="flex items-center gap-2 py-2">
       {/* 色の点は 12px だが、押せる範囲は 24px にする。input の上に点を重ね、input を透明にする */}
@@ -55,12 +51,10 @@ const LayerRow = ({
         />
       </span>
       <p className="min-w-0 flex-1 truncate text-dns-16N-120 text-solid-gray-800">{name}</p>
-      {count !== undefined && (
-        <p className="shrink-0 text-oln-14N-100 text-solid-gray-600">
-          {countFormat.format(count)}
-          <span className="sr-only"> 件</span>
-        </p>
-      )}
+      <p className="shrink-0 text-oln-14N-100 text-solid-gray-600">
+        {countFormat.format(count)}
+        <span className="sr-only"> 件</span>
+      </p>
       <button
         type="button"
         aria-label={`「${name}」を表示`}
@@ -82,7 +76,7 @@ const LayerRow = ({
   );
 };
 
-export const LayerPanel = ({ datasets, counts, onStyleChange, onRemove }: LayerPanelProps) =>
+export const LayerPanel = ({ datasets, onStyleChange, onRemove }: LayerPanelProps) =>
   datasets.length === 0 ? null : (
     <section aria-label="レイヤー" className="w-80 rounded-8 bg-white px-4 py-1 shadow-2">
       <ul>
@@ -90,7 +84,6 @@ export const LayerPanel = ({ datasets, counts, onStyleChange, onRemove }: LayerP
           <LayerRow
             key={dataset.id}
             dataset={dataset}
-            count={counts.get(dataset.id)}
             onStyleChange={onStyleChange}
             onRemove={onRemove}
           />
