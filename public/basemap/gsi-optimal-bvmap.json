@@ -1,0 +1,82 @@
+{
+  "version": 8,
+  "name": "RightsizingJPMap の背景地図（国土地理院最適化ベクトルタイル）",
+  "metadata": {
+    "rjm:insertBefore": { "choropleth": "road", "boundary": "label-place" }
+  },
+  "sources": {
+    "gsi": {
+      "type": "vector",
+      "url": "pmtiles://https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/optimal_bvmap-v1.pmtiles",
+      "attribution": "国土地理院最適化ベクトルタイル"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": ["step", ["zoom"], "#e6e6e6", 8, "#ffffff"] }
+    },
+    {
+      "id": "land",
+      "type": "fill",
+      "source": "gsi",
+      "source-layer": "AdmArea",
+      "maxzoom": 8,
+      "paint": { "fill-color": "#ffffff" }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "gsi",
+      "source-layer": "WA",
+      "paint": { "fill-color": "#e6e6e6" }
+    },
+    {
+      "id": "road",
+      "type": "line",
+      "source": "gsi",
+      "source-layer": "RdCL",
+      "filter": ["in", ["get", "vt_rdctg"], ["literal", ["高速自動車国道等", "国道", "主要道路"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#b3b3b3",
+        "line-opacity": 0.8,
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4,
+          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 0.5, 0.3],
+          10,
+          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 1.5, 1],
+          14,
+          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 3, 2]
+        ]
+      }
+    },
+    {
+      "id": "label-place",
+      "type": "symbol",
+      "source": "gsi",
+      "source-layer": "Anno",
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["in", ["get", "vt_code"], ["literal", [1301, 1302, 1303, 1401, 1402, 1403, 110]]]
+      ],
+      "layout": {
+        "text-field": ["get", "vt_text"],
+        "text-font": ["Noto Sans JP", "sans-serif"],
+        "text-size": ["match", ["get", "vt_code"], [1301, 1401], 13, [1302, 1402, 110], 12, 11],
+        "symbol-sort-key": ["match", ["get", "vt_code"], [1301, 1401], 1, [1302, 1402, 110], 2, 3],
+        "text-padding": 4
+      },
+      "paint": {
+        "text-color": "#333333",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    }
+  ]
+}

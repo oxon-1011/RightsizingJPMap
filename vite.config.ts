@@ -31,7 +31,15 @@ export default defineConfig({
         extends: true,
         // テストの途中で依存の最適化が走ると、Vite がページを読み込み直してテストが失敗するので、先に済ませておく
         optimizeDeps: {
-          include: ["@duckdb/duckdb-wasm", "hyparquet", "hyparquet-compressors"],
+          include: [
+            "@duckdb/duckdb-wasm",
+            "hyparquet",
+            "hyparquet-compressors",
+            "maplibre-gl",
+            "pmtiles",
+            "@deck.gl/layers",
+            "@deck.gl/mapbox",
+          ],
         },
         test: {
           name: "browser",
