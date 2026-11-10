@@ -10,7 +10,6 @@ import {
   type ErrorEvent,
   type LayerSpecification,
   Map as MapLibreMap,
-  type MapMouseEvent,
   setWorkerUrl,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -401,7 +400,7 @@ const pickedProperties = (object: unknown): unknown => {
  * - **経緯度**：ポインタの位置を unproject する。メッシュコードは app が core で計算する。
  *
  * 地図が動いているあいだ（movestart から moveend まで）は知らせず、動き始めに leave を知らせる。
- * 動き終えたときにポインタが地図の上にあれば、その位置で引き直して知らせる。
+ * 動き終えたあとは、次にポインタが動いたときに知らせる（引き直しのために picking を呼ばない）。
  * ドラッグのあいだは、MapLibre は mousemove を出さず、deck.gl はボタンを押したままの pointermove で picking をしない。
  */
 export const watchPointer = (
@@ -409,22 +408,23 @@ export const watchPointer = (
   listener: (event: MapPointerEvent) => void,
 ): (() => void) => {
   const { map, overlay } = handle;
-  /** 地図の上のポインタの位置。地図の外では null */
-  let pointer: { readonly x: number; readonly y: number } | null = null;
+  /** ポインタが地図の上にあるか */
+  let inside = false;
   let moving = false;
 
-  const notify = (x: number, y: number, picked: PickingInfo | null): void => {
+  const notify = (info: PickingInfo): void => {
+    const { x, y } = info;
     const { lng, lat } = map.unproject([x, y]);
     const [municipality] = map.queryRenderedFeatures([x, y], {
       layers: [ADMIN_LAYER_IDS.municipalityFill],
     });
     const code: unknown = municipality?.properties[ADMIN_TILE_CODE_PROPERTY];
     const feature =
-      picked?.picked === true && picked.layer !== null && picked.layer !== undefined
+      info.picked && info.layer !== null && info.layer !== undefined
         ? {
-            layerId: picked.layer.id,
-            index: picked.index,
-            properties: pickedProperties(picked.object),
+            layerId: info.layer.id,
+            index: info.index,
+            properties: pickedProperties(info.object),
           }
         : null;
     const container = map.getContainer();
@@ -440,41 +440,37 @@ export const watchPointer = (
 
   // deck.gl の onHover は、地図の外に出たあと（x が -1）にも呼ばれる
   const onHover = (info: PickingInfo): void => {
-    if (moving || pointer === null || info.x < 0) {
+    if (moving || !inside || info.x < 0) {
       return;
     }
-    notify(info.x, info.y, info);
+    notify(info);
   };
-  // MapLibre は、ドラッグで地図を動かしているあいだ mousemove を出さない。
-  // 地図の上で離した mouseup の位置を、動き終えたときに引き直す位置にする
-  const onPointerAt = (e: MapMouseEvent): void => {
-    pointer = { x: e.point.x, y: e.point.y };
+  const onMouseMove = (): void => {
+    inside = true;
   };
   const onMouseOut = (): void => {
-    pointer = null;
+    inside = false;
     listener({ kind: "leave" });
   };
   const onMoveStart = (): void => {
     moving = true;
     listener({ kind: "leave" });
   };
+  // 動き終えても引き直さず、次にポインタが動いたときの deck.gl の onHover を待つ。
+  // 動き終えた直後に pickObject を呼ぶと、100 万点を重ねた地図では、カメラが変わったあとの最初の picking（50〜90ms）に
+  // GPU が最後のフレームを描き終えるのを待つ時間が加わり、1 フレームが 330〜450ms に延びた（2026-11-10）
   const onMoveEnd = (): void => {
     moving = false;
-    if (pointer !== null) {
-      notify(pointer.x, pointer.y, overlay.pickObject({ ...pointer, radius: PICKING_RADIUS }));
-    }
   };
 
   overlay.setProps({ onHover, pickingRadius: PICKING_RADIUS });
-  map.on("mousemove", onPointerAt);
-  map.on("mouseup", onPointerAt);
+  map.on("mousemove", onMouseMove);
   map.on("mouseout", onMouseOut);
   map.on("movestart", onMoveStart);
   map.on("moveend", onMoveEnd);
   return () => {
     overlay.setProps({ onHover: null });
-    map.off("mousemove", onPointerAt);
-    map.off("mouseup", onPointerAt);
+    map.off("mousemove", onMouseMove);
     map.off("mouseout", onMouseOut);
     map.off("movestart", onMoveStart);
     map.off("moveend", onMoveEnd);

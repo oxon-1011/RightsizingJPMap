@@ -161,8 +161,9 @@ MapboxOverlay は、interleaved では MapLibre の mousemove を deck.gl に渡
 
 地図が動いているあいだ（`movestart` から `moveend` まで）は、知らせない。
 ドラッグのあいだは、MapLibre が mousemove を出さず、deck.gl もボタンを押したままの pointermove では picking をしないので、picking の負荷もかからない。
-動き終えたときにポインタが地図の上にあれば、その位置で `pickObject` を1回呼んで知らせ直す。
-ドラッグのあいだは mousemove が来ないので、地図の上で離した `mouseup` の位置を、知らせ直す位置にする。
+動き終えても引き直さず、次にポインタが動いたときに知らせる。
+動き終えた直後に `pickObject` で引き直すと、100 万点を重ねた地図では、その1フレームが 330〜450ms に延びたからである（2026-11-10、本番用のビルドの Chrome で測った）。
+カメラが変わったあとの最初の picking は 50〜90ms かかり（2回目からは約 10ms）、動き終えた直後はそれに、GPU が最後のフレームを描き終えるのを待つ時間が加わる。
 クリックは扱わない。MapLibre は、押した位置から 3px（`clickTolerance` の既定）以上動かして離すと、`click` を出さない（`map.browser.test.ts` で確かめている）。
 
 地図は回転と傾きを止め、ズームを 4〜16 に限っている。

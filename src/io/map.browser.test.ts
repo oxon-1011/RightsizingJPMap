@@ -360,7 +360,7 @@ describe("watchPointer", () => {
     stop();
   });
 
-  it("地図が動き始めたら leave を知らせ、動いているあいだは知らせず、動き終えたらその位置で引き直す", async () => {
+  it("地図が動き始めたら leave を知らせ、動いているあいだは知らせず、動き終えたあとはポインタが動くと知らせる", async () => {
     const h = await startWithPoint();
     const events: MapPointerEvent[] = [];
     const stop = watchPointer(h, (e) => events.push(e));
@@ -377,14 +377,15 @@ describe("watchPointer", () => {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
     await moved;
-    const during = events.slice(before);
-    expect(during[0]).toEqual({ kind: "leave" });
-    // 動き終えたときに1回だけ引き直す。ズームの中心の点は同じ位置に残る
-    expect(during.slice(1).map((e) => e.kind)).toEqual(["hover"]);
-    const resampled = during[1];
-    expect(resampled !== undefined && isHover(resampled) && resampled.hit.feature).toMatchObject({
-      layerId: POINT_LAYER,
-    });
+    // 動き終えただけでは引き直さない
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    expect(events.slice(before)).toEqual([{ kind: "leave" }]);
+    // ポインタが動けば知らせる。ズームの中心の点は同じ位置に残る
+    move(h, at.x, at.y);
+    const after = await waitFor(h, events, before + 1, isHover);
+    expect(isHover(after) && after.hit.feature).toMatchObject({ layerId: POINT_LAYER });
     stop();
   });
 
