@@ -23,6 +23,7 @@ io を呼んでよいのはこの層だけである。
 | `assign.ts` | 点を行政区域に割り当てる手続き（読む都道府県の選択と、spatial 拡張の呼び出し） |
 | `choropleth.ts` | いまの単位、指標、年の塗り分けの値と階級区分 |
 | `overlays.ts` | 自前データの点、線、面のレイヤーの指定 |
+| `hover.ts` | ホバーのカード。地図のポインタの知らせからカードの中身を作り、カードだけのストアに置く |
 | `links.ts` | 画面から開く `docs/user/` の GitHub 上の URL |
 | `data-url.ts` | 生成物と `public/` のファイルの URL |
 
@@ -71,10 +72,14 @@ MapLibre の CSS（`.maplibregl-map` の `position: relative`）は Tailwind の
 | `NoticeList` | `state.notices`、`ACCEPTANCE_URL` | `app.dispatch({ type: "notice-dismissed", id })` |
 | `LayerPanel` | `state.datasets` | `app.changeDatasetStyle(id, style)`、`app.removeDataset(id)`、確かめてから `app.clearDatasets()` |
 | `PlaceSearch` | `runtime.places` の索引から core の `searchPlaces` で作った候補、`runtime.places.kind === "loading"` | 開くときに `app.loadPlaces()`、選んだら `app.moveToPlace(place)` |
+| `HoverCard` | `useHoverStore((s) => s.card)`（`app.hover` のストア） | なし |
 
 `app.dispatch` が受け付けるのは、単位、年、指標の切り替えと、通知を閉じる操作だけである（`UiAction`）。
 データの追加と削除は目録を書くので、`importFiles`、`removeDataset`、`clearDatasets` を通す。
 単位、年、指標、データが変わると、`app` がストアの購読から地図を描き直すので、部品から描画を呼ぶ必要はない。
+
+ホバーのカードは、`app.store` ではなく `app.hover` のストアにある。
+カードはポインタを動かすたびに変わるので、`App.tsx` はカードだけを読む小さな部品（`HoverCardSlot`）でストアを読み、描き直しをその部品の中に閉じ込める。
 
 場所の入力欄の開閉、入力、選んでいる候補の番号は、画面の中の状態として `App.tsx` に置く。
 候補は `app.placeCandidates(query)` で作らず、`runtime.places` から作る。
@@ -104,6 +109,7 @@ React Compiler は描くときに呼ぶ関数を純粋とみなし、`app.placeC
 | `clearDatasets` | `writeManifest`、`clear`、`notify` | `EMPTY_MANIFEST`、`reduce`（`datasets-cleared`） |
 | `changeDatasetStyle` | `writeManifest`、`notify`（書けるタブだけ） | `updateDatasetStyle`、`reduce`（`dataset-style-changed`） |
 | `loadPlaces`、`placeCandidates`、`moveToPlace` | `fetchBytes`（places.json）、`fitBBox` | `parsePlaces`、`buildPlaceIndex`、`searchPlaces` |
+| ホバーのカード | `watchPointer`、`readParquetColumns`（総人口の列） | `meshHoverColumns`、`hoverContent`、`computeMunicipalIndicator`、`parseMunicipalNames`、`indexMeshes` |
 
 生成物の JSON と admin_geom の都道府県のファイルは io の `fetchBytes` で、利用者のファイルは `readBlobBytes` で全体を読む。
 
@@ -163,6 +169,27 @@ Firefox は許可を求める表示を出し、利用者が答えるまで `pers
 - 指標の列は、最近使った 16 列（約 11MB）を持っておく。
 - 市区町村を塗るあいだも、メッシュのレイヤーを隠して残す。メッシュに戻したときに、形の作り直しを避けるためである。
 - 自前データをメッシュに結合した指標は、集計したメッシュだけを、そのメッシュの形で描く。ベースデータにないメッシュの値も描ける（docs/design/user-data.md の「検査と拒否」）。
+
+### ホバーのカード
+
+地図の上のポインタの下のものの値を、ポインタの横のカードに出す（docs/design/implementation-plan.md の段階 7.5 の 3.）。
+`attachMap` で io の `watchPointer` を聞き、`detachMap` でやめてカードを消す。
+カードの中身は core の `hoverContent` が決める。
+
+- **メッシュ**：ポインタの経緯度から core でメッシュコードを計算し、塗り分けの値と、その年の総人口を引く。GPU の picking は使わない。塗り分けにもベースデータにもないメッシュには出さない。
+- **市区町村**：io が `queryRenderedFeatures` で返した団体コードで、塗り分けの値、その年の総人口、名前を引く。名前と都道府県の名前は `municipal_indicators.parquet` の `name` の列から作る（`base-data.ts` の `MunicipalBase.names`）。値の表にない区域（値のない北方領土の6村）には出さない。
+- **自前データ**：いちばん上の地物を、下の塗り分けより先に出す。線と面は GeoJSON の地物の属性を先頭から5つ、点はメモリに持っている数値の属性だけを出す。点の文字列の属性は OPFS の Parquet にしかないので、カードのために読み直さない。
+
+値を秘匿として透明にしたメッシュ（D7）は「秘匿」、値のないメッシュと区域は「なし」と出す。
+秘匿かどうかは、塗り分けに使った秘匿の列（`{年}_masked`）で決める。
+結合した指標の人口あたりの値では、分母の指標の秘匿の列で決める。
+
+カードを作る材料（`HoverData`）は、地図を描き直すたびに作り直す。
+作り直すのは、ポインタが地図の上にあるときだけで、作り終えるまでは前のカードを残す。
+年を矢印のキーで変えたときに、カードが消えて点滅しないようにするためである。
+塗り分けに使った列は `base-data.ts` が持っているので読み直さない。
+総人口の列（`{年}_pop`）は、年齢別の人数の指標（年少人口など）と、総人口で割らない結合した指標では塗り分けに使わないので、カードのために1列（約 0.6MB）読む。
+ポインタが地図に乗るまでは読まない。
 
 ### 画面の通知にない失敗
 

@@ -22,6 +22,7 @@ import { createPointAssigner } from "./assign";
 import { createBaseData } from "./base-data";
 import { type Choropleth, choroplethKey, computeChoropleth } from "./choropleth";
 import { createDatasetCache } from "./datasets";
+import { type AppliedChoropleth, createHover, type HoverStore } from "./hover";
 import { type ImportFile, readImportFile } from "./import";
 import { createOverlayBuilder } from "./overlays";
 import { createPersistence, type Persistence } from "./persistence";
@@ -38,6 +39,8 @@ export type UiAction = Extract<
 
 export type App<Container> = {
   readonly store: AppStore;
+  /** ホバーのカード。ポインタを動かすたびに変わるので、store とは分けている（hover.ts） */
+  readonly hover: HoverStore;
   /** 置き場所を開き、書き込みのロックを取り、目録を読む。何度呼んでも1回だけ行う */
   readonly boot: () => Promise<Result<void, AppError>>;
   /** 地図を作って描く。前の地図があれば片付ける */
@@ -86,6 +89,7 @@ export const createApp = <Container>(
   });
   const datasets = createDatasetCache({ storage: () => storage, assignPoints });
   const overlays = createOverlayBuilder({ datasets, report });
+  const hover = createHover({ base, datasets, report });
 
   // 目録
 
@@ -180,9 +184,17 @@ export const createApp = <Container>(
   let appliedKey: string | null = null;
   /** 地図に渡したメッシュのレイヤー。行政区域を塗っているあいだも、隠して持ち続ける */
   let meshLayer: MeshLayerSpec | null = null;
+  /** 地図に渡した塗り分けと、それを作った状態。ホバーのカードの値を引くのに使う */
+  let applied: AppliedChoropleth | null = null;
+  let unwatchPointer: (() => void) | null = null;
 
   /** 塗り分けを地図に渡す形にする。行政区域を塗るときは、メッシュを隠して形を残す */
-  const applyChoropleth = (view: MapView, choropleth: Choropleth, key: string): void => {
+  const applyChoropleth = (
+    view: MapView,
+    choropleth: Choropleth,
+    key: string,
+    state: AppliedChoropleth["state"],
+  ): void => {
     if (choropleth.unit === "mesh") {
       meshLayer = meshLayerSpec({
         id: MESH_LAYER_ID,
@@ -206,6 +218,7 @@ export const createApp = <Container>(
       }
     }
     appliedKey = key;
+    applied = { choropleth, state };
     setRuntime({ joinedClassification: choropleth.joined ? choropleth.classification : null });
   };
 
@@ -239,7 +252,7 @@ export const createApp = <Container>(
       return;
     }
     if (choropleth !== null) {
-      applyChoropleth(view, choropleth, key);
+      applyChoropleth(view, choropleth, key, state);
     }
     const shown = view.setOverlayLayers({
       mesh: meshLayer,
@@ -249,6 +262,7 @@ export const createApp = <Container>(
     if (!shown.ok) {
       report({ kind: "map", error: shown.error });
     }
+    hover.update({ applied, datasets: getState().datasets });
   };
 
   const requestRender = (): void => {
@@ -276,13 +290,17 @@ export const createApp = <Container>(
   const resetMapState = (): void => {
     appliedKey = null;
     meshLayer = null;
+    applied = null;
     setRuntime({ joinedClassification: null });
   };
 
   const detachMap = (): void => {
     mapGeneration++;
+    unwatchPointer?.();
+    unwatchPointer = null;
     map?.stop();
     map = null;
+    hover.clear();
     resetMapState();
   };
 
@@ -301,6 +319,7 @@ export const createApp = <Container>(
       return ok(undefined);
     }
     map = started.value;
+    unwatchPointer = map.watchPointer(hover.onPointer);
     await render();
     return ok(undefined);
   };
@@ -487,6 +506,7 @@ export const createApp = <Container>(
 
   return {
     store,
+    hover: hover.store,
     boot,
     attachMap,
     detachMap,

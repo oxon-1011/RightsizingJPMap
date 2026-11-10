@@ -25,10 +25,15 @@ import type { BaseData } from "./base-data";
 import type { DatasetCache } from "./datasets";
 import type { AppError } from "./ports";
 
-/** 塗り分けの値。メッシュは geometry と同じ順の値、行政区域は団体コードごとの値 */
+/**
+ * 塗り分けの値。メッシュは geometry と同じ順の値、行政区域は団体コードごとの値。
+ * メッシュの codes は値の順のメッシュコードで、ベースデータの指標では MeshBase.codes そのもの、
+ * 結合した指標では集計したメッシュ（MeshAggregate.keys）である
+ */
 export type Choropleth =
   | {
       readonly unit: "mesh";
+      readonly codes: Uint32Array;
       readonly geometry: MeshGeometry;
       readonly values: ArrayLike<number>;
       readonly classification: Classification;
@@ -137,6 +142,7 @@ const joinedMesh = async (
   if (perPopulation === null) {
     return ok({
       unit: "mesh",
+      codes: aggregate.keys,
       geometry,
       values: numerators,
       classification: joinedClassification(numerators),
@@ -175,6 +181,7 @@ const joinedMesh = async (
   }
   return ok({
     unit: "mesh",
+    codes: aggregate.keys,
     geometry,
     values: values.value,
     classification: joinedClassification(forBreaks.value),
@@ -287,6 +294,7 @@ export const computeChoropleth = async (
         return values.ok
           ? ok({
               unit,
+              codes: mesh.value.codes,
               geometry: mesh.value.geometry,
               values: values.value,
               classification: classificationOf(indicator.id, unit),
