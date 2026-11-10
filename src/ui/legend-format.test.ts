@@ -30,20 +30,21 @@ describe("legendTicks", () => {
 
   it("メッシュの総人口は桁区切りで書き、単位を付けない", () => {
     const ticks = legendTicks(classificationOf("pop", "mesh"), "persons");
-    expect(labelsOf(ticks)).toEqual(["10", "30", "100", "300", "1,000"]);
+    expect(labelsOf(ticks)).toEqual(["10", "30", "100", "300", "1千", "3千"]);
   });
 
-  it("市区町村の人数は、1万以上の1万の倍数を「万」で書く", () => {
+  it("市区町村の人数は、1万以上の1万の倍数を「万」で、1,000 の倍数を「千」で書く", () => {
     expect(labelsOf(legendTicks(classificationOf("pop", "municipality"), "persons"))).toEqual([
-      "3,000",
+      "1千",
+      "3千",
       "1万",
       "3万",
       "10万",
       "30万",
     ]);
     expect(labelsOf(legendTicks(classificationOf("p65", "municipality"), "persons"))).toEqual([
-      "1,000",
-      "3,000",
+      "1千",
+      "3千",
       "1万",
       "3万",
       "10万",
@@ -103,7 +104,8 @@ describe("legendRangeTexts", () => {
     const texts = legendRangeTexts(classificationOf("pop", "mesh"), "persons");
     expect(texts[0]).toBe("10 人未満");
     expect(texts[1]).toBe("10〜30 人");
-    expect(texts[5]).toBe("1,000 人以上");
+    expect(texts[5]).toBe("1,000〜3,000 人");
+    expect(texts[6]).toBe("3,000 人以上");
   });
 
   it("人口増減率の最後の階級は「0% 以上」（増加）", () => {

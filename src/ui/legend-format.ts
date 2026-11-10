@@ -5,7 +5,7 @@ import type { Classification } from "../core/classify/classify";
 
 /**
  * 凡例の数字の種類。
- * - persons：人数。1万以上で1万の倍数なら「3万」と書く
+ * - persons：人数。1万以上で1万の倍数なら「3万」と書く。目盛りでは、1,000 以上 1万未満の 1,000 の倍数を「3千」と書く
  * - fraction：比（0.3 が 30%）。最後の目盛りにだけ % を付ける
  * - number：自前データを結合した指標（件数、合計、人口あたりの値）。単位を付けない
  */
@@ -62,6 +62,16 @@ const formatBreaks = (breaks: readonly number[], scale: LegendScale): readonly s
   return breaks.map((b) => formatLegendValue(b, scale, signed, 10));
 };
 
+/**
+ * 人数の目盛りで、1,000 以上 1万未満の 1,000 の倍数を「3千」と書く。
+ * 7階級の凡例では目盛りの間隔が「1,000」の幅より狭く、隣の数字とつながるからである。
+ * 範囲の文（スクリーンリーダー向け）は幅を気にしなくてよいので、桁区切りのままにする。
+ */
+const thousandsLabel = (value: number, label: string): string =>
+  value >= 1_000 && value < 10_000 && value % 1_000 === 0
+    ? `${integerFormat.format(value / 1_000)}千`
+    : label;
+
 /** 凡例の目盛り。position は色の帯の左端を 0、右端を 1 とした位置 */
 export type LegendTick = { readonly position: number; readonly label: string };
 
@@ -73,7 +83,9 @@ export const legendTicks = (
   { breaks, colors }: Classification,
   scale: LegendScale,
 ): readonly LegendTick[] => {
-  const labels = formatBreaks(breaks, scale);
+  const labels = formatBreaks(breaks, scale).map((label, i) =>
+    scale === "persons" ? thousandsLabel(breaks[i] ?? Number.NaN, label) : label,
+  );
   return labels.map((label, i) => ({
     position: (i + 1) / colors.length,
     label: scale === "fraction" && i === labels.length - 1 ? `${label}%` : label,
