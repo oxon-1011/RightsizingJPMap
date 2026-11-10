@@ -4,6 +4,7 @@
 import { type BBox, DATA_FILES } from "../core/data/schema";
 import type { DataFile } from "../core/data/url";
 import { err, ok, type Result } from "../core/result";
+import { fetchBytes, readBlobBytes } from "../io/bytes";
 import {
   BASEMAP_STYLE_FILE,
   fitBBox,
@@ -24,26 +25,16 @@ import type { AppPorts, FetchError, MapView } from "./ports";
 /** 最初に映す範囲。日本の全体（与那国島から宗谷岬まで）が収まる */
 export const INITIAL_BOUNDS: BBox = [122.9, 24.0, 146.0, 45.6];
 
-const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-
-/**
- * 生成物のファイル全体を読む。admin_geom の都道府県のファイル（数百 KB）と、小さな JSON に使う。
- * 全体を1回で読むので、GitHub Pages が gzip で返しても、ブラウザが展開した元のバイト列になる。
- */
-const fetchBytes = async (file: DataFile): Promise<Result<Uint8Array, FetchError>> => {
-  try {
-    const response = await fetch(baseDataUrl(file));
-    if (!response.ok) {
-      return err({ kind: "fetch-failed", message: `${file}: HTTP ${response.status}` });
-    }
-    return ok(new Uint8Array(await response.arrayBuffer()));
-  } catch (e) {
-    return err({ kind: "fetch-failed", message: `${file}: ${messageOf(e)}` });
-  }
+/** 生成物のファイル全体を読む。admin_geom の都道府県のファイル（数百 KB）と、小さな JSON に使う */
+const fetchBaseBytes = async (file: DataFile): Promise<Result<Uint8Array, FetchError>> => {
+  const bytes = await fetchBytes(baseDataUrl(file));
+  return bytes.ok
+    ? bytes
+    : err({ kind: "fetch-failed", message: `${file}: ${bytes.error.message}` });
 };
 
 const fetchJson = async (file: DataFile): Promise<Result<unknown, FetchError>> => {
-  const bytes = await fetchBytes(file);
+  const bytes = await fetchBaseBytes(file);
   if (!bytes.ok) {
     return bytes;
   }
@@ -52,11 +43,8 @@ const fetchJson = async (file: DataFile): Promise<Result<unknown, FetchError>> =
 };
 
 const readBlob = async (blob: Blob): Promise<Result<Uint8Array, FetchError>> => {
-  try {
-    return ok(new Uint8Array(await blob.arrayBuffer()));
-  } catch (e) {
-    return err({ kind: "fetch-failed", message: messageOf(e) });
-  }
+  const bytes = await readBlobBytes(blob);
+  return bytes.ok ? bytes : err({ kind: "fetch-failed", message: bytes.error.message });
 };
 
 const startMapView = async (container: HTMLElement) => {
@@ -88,7 +76,7 @@ export const browserPorts = (): AppPorts<HTMLElement> => ({
   isPersisted,
   openBaseParquet: (file) => openParquetUrl(baseDataUrl(file)),
   fetchBaseJson: fetchJson,
-  fetchBaseBytes: fetchBytes,
+  fetchBaseBytes,
   readBlob,
   tables: createDuckDbEngine(),
   startMap: startMapView,

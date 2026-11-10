@@ -93,14 +93,14 @@ const runtime = useAppStore((s) => s.runtime);
 | ロックが渡ったとき | `listDatasets`、`removeDataset` | `reduce`（`access-changed`）、`orphanDatasetFiles` |
 | `attachMap` と描き直し | `startMap`、`setAdminFill`、`setOverlayLayers`、`openParquetUrl`、`readParquetColumns`、`openParquetBuffer`、`parseOverlayGeoJson` | `meshColumnsToRead`、`computeMeshIndicator`、`parseMunicipalTable`、`computeMunicipalIndicator`、`classificationOf`、`buildMeshGeometry`、`meshLayerSpec`、`adminFillSpec`、`pointLayerSpec`、`geoJsonLayerSpec` |
 | 自前データの指標 | 上に加えて `readDataset` | `aggregateByMesh`、`aggregatePointsByMesh`、`aggregateByCode`、`measureValues`、`completeCodeValues`、`perPopulationByMesh`、`perPopulationByCode`、`indexMeshes`、`joinedClassification`、`checkGeoJson` |
-| 点から行政区域への割り当て | `fetch`（admin_geom）、`startDuckDb`、`loadSpatial`、`registerFile`、`query`、`dropFile` | `parseAdminGeomIndex`、`prefecturesForPoints` |
+| 点から行政区域への割り当て | `fetchBytes`（admin_geom）、`startDuckDb`、`loadSpatial`、`registerFile`、`query`、`dropFile` | `parseAdminGeomIndex`、`prefecturesForPoints` |
 | `importFiles` | `startDuckDb`、`registerFile`、`query`、`readFileBytes`、`dropFile`、`writeDataset`、`writeManifest`、`ManifestChannel` の `notify`、`isPersisted`、`requestPersistence` | `canWrite`、`detectFormat`、`isLargeFile`、`planTableJoin`、`checkTableValues`、`paintedMunicipalCodes`、`checkGeoJson`、`newDatasetEntry`、`addDataset`、`serializeManifest`、`reduce`（`dataset-added`、`notified`） |
 | `removeDataset` | `writeManifest`、`removeDataset`、`notify` | `removeDataset`、`datasetFileName`、`reduce`（`dataset-removed`） |
 | `clearDatasets` | `writeManifest`、`clear`、`notify` | `EMPTY_MANIFEST`、`reduce`（`datasets-cleared`） |
 | `changeDatasetStyle` | `writeManifest`、`notify`（書けるタブだけ） | `updateDatasetStyle`、`reduce`（`dataset-style-changed`） |
-| `loadPlaces`、`placeCandidates`、`moveToPlace` | `fetch`（places.json）、`fitBBox` | `parsePlaces`、`buildPlaceIndex`、`searchPlaces` |
+| `loadPlaces`、`placeCandidates`、`moveToPlace` | `fetchBytes`（places.json）、`fitBBox` | `parsePlaces`、`buildPlaceIndex`、`searchPlaces` |
 
-`fetch`（生成物の JSON と、admin_geom の都道府県のファイル全体）と、利用者のファイルを `Blob.arrayBuffer` で読む処理は、io にそれを包む関数がないので、`browser-ports.ts` に書いた。
+生成物の JSON と admin_geom の都道府県のファイルは io の `fetchBytes` で、利用者のファイルは `readBlobBytes` で全体を読む。
 
 ## 決めたこと
 
@@ -128,7 +128,7 @@ DuckDB-WASM を読み込むのは、取り込むときと、点を行政区域�
 
 ### 点から行政区域への割り当て
 
-点の範囲に入る都道府県を core の `prefecturesForPoints` で選び、その `admin_geom/<コード>.parquet` だけを `fetch` で読んで DuckDB に登録する。
+点の範囲に入る都道府県を core の `prefecturesForPoints` で選び、その `admin_geom/<コード>.parquet` だけを `fetchBytes` で読んで DuckDB に登録する。
 点はどの都道府県の範囲にも入らなければ、spatial 拡張を読み込まずに、すべて値なし（null）にする。
 点の座標は、点の番号と緯度経度の CSV にして DuckDB に渡す。
 

@@ -15,6 +15,7 @@ hyparquet、DuckDB-WASM、OPFS、Web Locks、MapLibre、deck.gl の呼び出し�
 | `tabs.ts` | Web Locks、BroadcastChannel | `acquireWriterLock`、`openManifestChannel` |
 | `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`fitBBox` |
 | `deck-layers.ts` | deck.gl のレイヤー | `parseOverlayGeoJson`（レイヤーの組み立ては `setOverlayLayers` が呼ぶ） |
+| `bytes.ts` | `fetch`、`Blob.arrayBuffer` | `fetchBytes`、`readBlobBytes` |
 
 ### parquet.ts
 
@@ -30,6 +31,13 @@ Range リクエストに 206 が返らないサーバーでは、全体を読ま
 `ColumnArray` に変換できない型は `unsupported` とし、その列は読まない。
 数値の NULL は NaN にする。
 UINTEGER、BOOLEAN、VARCHAR の列は NULL を表せないので、NULL があれば最初の行の番号を付けて失敗を返す。
+
+### bytes.ts
+
+ファイル全体をバイト列で読む。
+`fetchBytes` は生成物の JSON と admin_geom の都道府県のファイルに、`readBlobBytes` は利用者が選んだファイルに使う。
+`fetchBytes` は 2xx 以外の応答を `read-failed` にする。
+全体を1回で読むので、GitHub Pages が gzip で返しても、ブラウザが展開した元のバイト列になる。
 
 ### duckdb.ts
 
