@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MeshLayerSpec } from "../core/render/mesh";
 import type { IndicatorSelection } from "../core/state/state";
 import {
@@ -342,7 +342,20 @@ describe("取り込み", () => {
     const app = createApp(testPorts({ grantPersistence: false }));
     await app.boot();
     await app.importFiles([file(POINTS_GEOJSON, "a.geojson")]);
-    expect(noticeKinds(app)).toEqual(["storage-not-persistent"]);
+    // 答えは取り込みの終わりを待たずに届く
+    await vi.waitFor(() => expect(noticeKinds(app)).toEqual(["storage-not-persistent"]));
+  });
+
+  it("データを消さないよう求めた答えを待たずに、次のファイルを取り込む", async () => {
+    // Firefox は許可を求める表示を出し、利用者が答えるまで persist() が解決しない
+    const ports = testPorts({ holdPersistence: true });
+    const app = createApp(ports);
+    await app.boot();
+    await app.importFiles([file(POINTS_GEOJSON, "a.geojson")]);
+    await app.importFiles([file(POINTS_GEOJSON, "b.geojson")]);
+    expect(app.store.getState().state.datasets.map((d) => d.name)).toEqual(["a", "b"]);
+    expect(ports.persistRequests).toHaveLength(1);
+    expect(app.store.getState().runtime.importing).toBe(false);
   });
 });
 

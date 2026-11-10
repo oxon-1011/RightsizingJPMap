@@ -217,6 +217,8 @@ export type TestPortsOptions = {
   readonly json?: Partial<Record<DataFile, unknown>>;
   readonly persisted?: boolean;
   readonly grantPersistence?: boolean;
+  /** true なら requestPersistence が解決しない（Firefox で利用者が許可の表示に答えていないとき） */
+  readonly holdPersistence?: boolean;
 };
 
 /** テスト用の口。地図の要素の型は文字列にする */
@@ -242,7 +244,9 @@ export const testPorts = (
     openManifestChannel: channels.open,
     requestPersistence: () => {
       persistRequests.push(1);
-      return Promise.resolve(ok(options.grantPersistence ?? true));
+      return options.holdPersistence === true
+        ? new Promise(() => {})
+        : Promise.resolve(ok(options.grantPersistence ?? true));
     },
     isPersisted: () => Promise.resolve(ok(options.persisted ?? false)),
     openBaseParquet: (file) => {

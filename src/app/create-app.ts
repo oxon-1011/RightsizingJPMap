@@ -374,7 +374,9 @@ export const createApp = <Container>(
           }
           dispatch({ type: "dataset-added", entry: outcome.entry });
           if (wasEmpty) {
-            await requestPersistenceOnce();
+            // 答えを待たない。Firefox は許可を求める表示を出し、利用者が答えるまで persist() が解決しないので、
+            // 待つと後ろの取り込みが止まる（2026-11-10 に Playwright の Firefox 159 で確かめた）
+            void requestPersistenceOnce();
           }
           return;
         }
