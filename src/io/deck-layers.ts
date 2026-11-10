@@ -144,6 +144,9 @@ const pointData = (spec: PointLayerSpec): PointData => {
   return data;
 };
 
+/** 点の縁取り。濃い塗りの上でも点を見つけられるよう、白で囲む */
+const POINT_STROKE = { color: [255, 255, 255, 255], widthPixels: 1.5 } as const;
+
 /** 自前データの点のレイヤー */
 export const pointLayer = (spec: PointLayerSpec): ScatterplotLayer<PointData> =>
   new ScatterplotLayer<PointData>({
@@ -152,7 +155,10 @@ export const pointLayer = (spec: PointLayerSpec): ScatterplotLayer<PointData> =>
     getFillColor: deckColor(spec.color),
     getRadius: spec.radiusPixels,
     radiusUnits: "pixels",
-    stroked: false,
+    stroked: true,
+    getLineColor: POINT_STROKE.color,
+    getLineWidth: POINT_STROKE.widthPixels,
+    lineWidthUnits: "pixels",
     visible: spec.visible,
   });
 

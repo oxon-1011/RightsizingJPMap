@@ -146,7 +146,8 @@ const adminFillLayer = (id: string, sourceLayer: string): LayerSpecification => 
 /**
  * 行政区域の境界線。メッシュを塗っているときも位置を見失わないよう、常に描く。
  * 隣り合う区域の境界は2つのポリゴンの辺として2回描かれるので、不透明の色にして濃さをそろえる。
- * 色は DADS の SolidGray（市区町村は 420、都道府県は 700）。
+ * 色は DADS の White にし、灰色の道路と見分けられるようにする（2026-11-10）。
+ * 市区町村は Figma の画面と同じ 0.5px、都道府県は縮尺に応じて 1px から 2.5px にする。
  */
 const ADMIN_LINE_LAYERS: readonly LayerSpecification[] = [
   {
@@ -156,8 +157,8 @@ const ADMIN_LINE_LAYERS: readonly LayerSpecification[] = [
     "source-layer": ADMIN_TILE_LAYERS.municipality,
     minzoom: 6,
     paint: {
-      "line-color": "#949494",
-      "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.3, 9, 0.6, 12, 1.2],
+      "line-color": "#ffffff",
+      "line-width": 0.5,
     },
   },
   {
@@ -166,8 +167,8 @@ const ADMIN_LINE_LAYERS: readonly LayerSpecification[] = [
     source: ADMIN_SOURCE_ID,
     "source-layer": ADMIN_TILE_LAYERS.prefecture,
     paint: {
-      "line-color": "#4d4d4d",
-      "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 8, 1, 12, 2],
+      "line-color": "#ffffff",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1, 12, 2.5],
     },
   },
 ];
