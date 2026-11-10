@@ -186,3 +186,39 @@ export const computeMunicipalIndicator = (
     }
   }
 };
+
+/** 地域と都道府県の名前。ホバーのカードで、市区町村の名前に都道府県の名前を添えるのに使う */
+export type MunicipalNames = {
+  /** 団体コードから、地域の名前 */
+  readonly areas: ReadonlyMap<string, string>;
+  /** 2桁の都道府県コードから、都道府県の名前（都道府県の行の name） */
+  readonly prefectures: ReadonlyMap<string, string>;
+};
+
+/** municipal_indicators.parquet の code、area_type、name の列から、地域と都道府県の名前を引けるようにする */
+export const parseMunicipalNames = (columns: Columns): Result<MunicipalNames, ColumnError> => {
+  const codes = stringColumn(columns, MUNICIPAL_COLUMNS.code, null);
+  if (!codes.ok) {
+    return codes;
+  }
+  const length = codes.value.length;
+  const areaTypes = stringColumn(columns, MUNICIPAL_COLUMNS.areaType, length);
+  if (!areaTypes.ok) {
+    return areaTypes;
+  }
+  const names = stringColumn(columns, MUNICIPAL_COLUMNS.name, length);
+  if (!names.ok) {
+    return names;
+  }
+  const areas = new Map<string, string>();
+  const prefectures = new Map<string, string>();
+  for (let i = 0; i < length; i++) {
+    const code = codes.value[i] ?? "";
+    const name = names.value[i] ?? "";
+    areas.set(code, name);
+    if (areaTypes.value[i] === AREA_TYPES.prefecture) {
+      prefectures.set(code.slice(0, 2), name);
+    }
+  }
+  return ok({ areas, prefectures });
+};
