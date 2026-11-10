@@ -393,15 +393,16 @@ const pickedProperties = (object: unknown): unknown => {
 /**
  * ポインタの下のものを知らせる。返した関数で知らせるのをやめる。
  *
- * - **自前データ**：deck.gl が mousemove のあとのフレームで行う picking（onHover）の結果を使う。
- *   deck.gl は mousemove をフレームごとに1回にまとめるので、知らせもフレームごとに1回になる。
+ * - **自前データ**：deck.gl が pointermove のあとのフレームで行う picking（onHover）の結果を使う。
+ *   interleaved の deck.gl は、地図のキャンバスの pointermove を自分で聞き（MapboxOverlay は MapLibre の
+ *   mousemove を渡さない）、フレームごとに1回にまとめるので、知らせもフレームごとに1回になる。
  *   picking の対象は、自前データの点、線、面のレイヤーだけである（deck-layers.ts）。
  * - **市区町村**：市区町村の塗りのレイヤーを queryRenderedFeatures で引き、団体コードを返す。
  * - **経緯度**：ポインタの位置を unproject する。メッシュコードは app が core で計算する。
  *
  * 地図が動いているあいだ（movestart から moveend まで）は知らせず、動き始めに leave を知らせる。
  * 動き終えたときにポインタが地図の上にあれば、その位置で引き直して知らせる。
- * MapLibre は、ドラッグで地図を動かしているあいだは mousemove を出さないので、そのあいだは deck.gl も picking をしない。
+ * ドラッグのあいだは、MapLibre は mousemove を出さず、deck.gl はボタンを押したままの pointermove で picking をしない。
  */
 export const watchPointer = (
   handle: MapHandle,
