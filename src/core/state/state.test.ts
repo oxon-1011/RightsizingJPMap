@@ -219,6 +219,40 @@ describe("通知", () => {
   });
 });
 
+describe("背景地図の表示", () => {
+  it("はじめはすべて表示し、単位ごとに切り替える", () => {
+    expect(INITIAL_STATE.basemap).toEqual({ rail: true, road: true, river: true });
+    const state = run(
+      INITIAL_STATE,
+      { type: "basemap-visibility-changed", group: "rail", visible: false },
+      { type: "basemap-visibility-changed", group: "river", visible: false },
+      { type: "basemap-visibility-changed", group: "rail", visible: true },
+    );
+    expect(state.basemap).toEqual({ rail: true, road: true, river: false });
+    expect({ ...state, basemap: INITIAL_STATE.basemap }).toEqual(INITIAL_STATE);
+  });
+
+  it("同じ表示を選んだら、同じ状態を返す", () => {
+    const state = reduce(INITIAL_STATE, {
+      type: "basemap-visibility-changed",
+      group: "road",
+      visible: true,
+    });
+    expect(state).toBe(INITIAL_STATE);
+  });
+
+  it("閲覧専用のタブでも切り替える", () => {
+    const readOnly = run(INITIAL_STATE, { type: "access-changed", access: "read-only" });
+    const state = reduce(readOnly, {
+      type: "basemap-visibility-changed",
+      group: "road",
+      visible: false,
+    });
+    expect(state.basemap.road).toBe(false);
+    expect(state.notices).toEqual(readOnly.notices);
+  });
+});
+
 describe("nearestYear", () => {
   it("最も近い年を選び、同じ近さなら後の年にする", () => {
     expect(nearestYear(2070, [2020, 2025, 2050])).toBe(2050);
