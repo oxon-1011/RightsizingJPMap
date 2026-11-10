@@ -94,7 +94,7 @@ describe("pointLayerSpec", () => {
 describe("geoJsonLayerSpec", () => {
   it("面には半透明の塗りを付け、線には付けない", () => {
     const style = { color: "#009e73", size: 2, visible: false };
-    expect(geoJsonLayerSpec("p", "polygon", style).fillColor).toEqual([0, 158, 115, 64]);
+    expect(geoJsonLayerSpec("p", "polygon", style).fillColor).toEqual([0, 158, 115, 32]);
     expect(geoJsonLayerSpec("l", "line", style).fillColor).toBeNull();
   });
 });

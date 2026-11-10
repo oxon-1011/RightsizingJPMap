@@ -279,12 +279,15 @@ export const nextLayerColor = (datasets: readonly DatasetEntry[]): string => {
   );
 };
 
-/** 種類ごとの size の既定値。TODO(トラック C): 仮の値 */
+/**
+ * 種類ごとの size の既定値。取り込むときに目録に書くので、変えても取り込み済みのデータには効かない。
+ * 点は濃い塗りの上でも見つけられる半径、面は薄い塗りでも範囲が分かる枠の幅にする。
+ */
 export const DEFAULT_LAYER_SIZE: Readonly<Record<DatasetKind, number>> = {
   table: 1,
-  point: 4,
+  point: 6,
   line: 2,
-  polygon: 1,
+  polygon: 2,
 };
 
 /** 検査を通ったデータ。表（CSV、Parquet）か GeoJSON */

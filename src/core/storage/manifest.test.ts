@@ -185,7 +185,7 @@ describe("目録の操作", () => {
         { name: "beds", type: "integer" },
       ],
       count: 1,
-      style: { color: LAYER_COLORS[0], size: 4, visible: true },
+      style: { color: LAYER_COLORS[0], size: 6, visible: true },
       stored_format: "parquet",
     });
   });

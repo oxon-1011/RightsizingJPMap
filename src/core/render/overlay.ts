@@ -27,8 +27,8 @@ export type GeoJsonLayerSpec = {
   readonly visible: boolean;
 };
 
-/** 面の塗りの不透明度（0〜255）。TODO(トラック C): 仮の値 */
-export const POLYGON_FILL_ALPHA = 64;
+/** 面の塗りの不透明度（0〜255）。下のメッシュの色が別の階級に見えないよう、薄くする（12.5%） */
+export const POLYGON_FILL_ALPHA = 32;
 
 /**
  * 点のレイヤーの指定を作る。lat と lon は同じ長さの、検査済みの座標。
