@@ -1,6 +1,10 @@
 @import "tailwindcss";
 /* Tailwind の既定の色を消す。DADS の色より前に置く */
 @import "./reset-tailwind-colors.css";
-/* DADS のトークンとユーティリティ。重なる名前は後の tokens.css が勝つ */
+/*
+  DADS のトークンとユーティリティ。部品は DADS のユーティリティ（bg-white、text-solid-gray-800 など）を直接使う。
+  --font-sans は DADS のプラグインの値（'Noto Sans JP', sans-serif）をそのまま使う。
+  プラグインはフォントのファイルを読み込まないので、index.html で Google Fonts から読む。
+  地図の塗り分けの配色は CSS ではなく core の定数に置く（src/core/classify/scales.ts）。
+*/
 @import "@digital-go-jp/tailwind-theme-plugin/v4";
-@import "./tokens.css";
