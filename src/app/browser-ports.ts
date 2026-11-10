@@ -12,6 +12,7 @@ import {
   setOverlayLayers,
   startMap,
   stopMap,
+  watchPointer,
 } from "../io/map";
 import { isPersisted, openStorage, requestPersistence } from "../io/opfs";
 import { openParquetUrl } from "../io/parquet";
@@ -63,6 +64,7 @@ const startMapView = async (container: HTMLElement) => {
     setAdminFill: (spec) => setAdminFill(handle, spec),
     setOverlayLayers: (layers) => setOverlayLayers(handle, layers),
     fitBBox: (bbox) => fitBBox(handle, bbox),
+    watchPointer: (listener) => watchPointer(handle, listener),
     stop: () => stopMap(handle),
   };
   return ok(view);

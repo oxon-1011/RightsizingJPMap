@@ -3,13 +3,14 @@
 // 出典は地図の右下の AttributionControl が出す（src/io/map.ts）。
 
 import { useEffect, useState } from "react";
-import { app, useAppStore } from "../app/instance";
+import { app, useAppStore, useHoverStore } from "../app/instance";
 import { ACCEPTANCE_URL } from "../app/links";
 import { searchPlaces } from "../core/places/search";
 import { selectableYears } from "../core/state/state";
 import { AddDataButton } from "./AddDataButton";
 import { DropOverlay } from "./DropOverlay";
 import { hasFiles, nextDragDepth } from "./file-drag";
+import { HoverCard } from "./HoverCard";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { isMacPlatform, isPlaceSearchShortcut } from "./keyboard";
 import { LayerPanel } from "./LayerPanel";
@@ -35,6 +36,15 @@ const attachMapElement = (el: HTMLDivElement | null): (() => void) | undefined =
   }
   void app.attachMap(el);
   return () => app.detachMap();
+};
+
+/**
+ * ホバーのカードをつなぐ。カードはポインタを動かすたびに変わるので、App とは別の部品でストアを読み、
+ * 描き直しをこの部品の中に閉じ込める（src/app/hover.ts）
+ */
+const HoverCardSlot = () => {
+  const card = useHoverStore((s) => s.card);
+  return card === null ? null : <HoverCard card={card} />;
 };
 
 export const App = () => {
@@ -103,6 +113,7 @@ export const App = () => {
     <main className="relative h-dvh overflow-hidden bg-solid-gray-100 font-sans">
       <h1 className="sr-only">RightsizingJPMap</h1>
       <div ref={attachMapElement} className="size-full" />
+      <HoverCardSlot />
 
       <div className="absolute top-6 left-6 z-10">
         <IndicatorPanel

@@ -47,8 +47,8 @@ export const formatLegendValue = (
   return shown > 0 && signed ? `+${magnitude}` : magnitude;
 };
 
-/** 区切りに負の数があれば、正の数に + を付けて減少と増加を見分ける */
-const isSigned = (breaks: readonly number[]): boolean => breaks.some((b) => b < 0);
+/** 区切りに負の数があれば、正の数に + を付けて減少と増加を見分ける。ホバーのカードの値でも使う */
+export const isSigned = (breaks: readonly number[]): boolean => breaks.some((b) => b < 0);
 
 /** 小数の区切りが同じ文字列に丸まらないよう、有効数字を増やしながら書く */
 const formatBreaks = (breaks: readonly number[], scale: LegendScale): readonly string[] => {
@@ -93,7 +93,9 @@ export const legendTicks = (
 };
 
 /** 範囲の文での単位と、「未満」「以上」の前の空白。「10 人未満」「30% 未満」のように書く */
-const RANGE_UNIT: Readonly<Record<LegendScale, { readonly unit: string; readonly gap: string }>> = {
+export const RANGE_UNIT: Readonly<
+  Record<LegendScale, { readonly unit: string; readonly gap: string }>
+> = {
   persons: { unit: " 人", gap: "" },
   fraction: { unit: "%", gap: " " },
   number: { unit: "", gap: " " },

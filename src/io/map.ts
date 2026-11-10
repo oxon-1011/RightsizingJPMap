@@ -2,6 +2,7 @@
 // （docs/design/map-and-hosting.md の「全体の構成」「描画の流れ」「行政区域の描画」）。
 // 背景地図のスタイルは public/basemap/ の JSON に分け、行政区域とメッシュはここで差し込む。
 
+import type { PickingInfo } from "@deck.gl/core";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import {
   AttributionControl,
@@ -19,6 +20,7 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Protocol } from "pmtiles";
 import type { Rgba } from "../core/classify/color";
 import { ADMIN_TILE_CODE_PROPERTY, ADMIN_TILE_LAYERS, type BBox } from "../core/data/schema";
+import type { HoverHit } from "../core/hover/hover";
 import type { AdminFillSpec } from "../core/render/admin";
 import { err, ok, type Result } from "../core/result";
 import { type OverlayLayers, overlayDeckLayers } from "./deck-layers";
@@ -354,4 +356,123 @@ export const fitBBox = (handle: MapHandle, bbox: BBox, padding = 32): void => {
     ],
     { padding },
   );
+};
+
+/**
+ * 自前データの地物を拾う半径（ピクセル）。幅 2px の線も、ポインタを少し外しても拾えるようにする。
+ * deck.gl は半径の中で最も近い地物を返す
+ */
+export const PICKING_RADIUS = 3;
+
+/**
+ * 地図の上のポインタの知らせ。
+ * - hover：ポインタの下のもの。x と y は地図の要素の左上からの位置、width と height は地図の要素の大きさ
+ * - leave：ポインタが地図の外に出たか、地図が動き始めた（ドラッグ、ズーム、場所への移動）
+ */
+export type MapPointerEvent =
+  | {
+      readonly kind: "hover";
+      readonly hit: HoverHit;
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    }
+  | { readonly kind: "leave" };
+
+/** deck.gl の picking の結果の地物の properties。GeoJSON の地物でなければ undefined */
+const pickedProperties = (object: unknown): unknown => {
+  if (!isRecord(object)) {
+    return undefined;
+  }
+  const { properties } = object;
+  return properties;
+};
+
+/**
+ * ポインタの下のものを知らせる。返した関数で知らせるのをやめる。
+ *
+ * - **自前データ**：deck.gl が pointermove のあとのフレームで行う picking（onHover）の結果を使う。
+ *   interleaved の deck.gl は、地図のキャンバスの pointermove を自分で聞き（MapboxOverlay は MapLibre の
+ *   mousemove を渡さない）、フレームごとに1回にまとめるので、知らせもフレームごとに1回になる。
+ *   picking の対象は、自前データの点、線、面のレイヤーだけである（deck-layers.ts）。
+ * - **市区町村**：市区町村の塗りのレイヤーを queryRenderedFeatures で引き、団体コードを返す。
+ * - **経緯度**：ポインタの位置を unproject する。メッシュコードは app が core で計算する。
+ *
+ * 地図が動いているあいだ（movestart から moveend まで）は知らせず、動き始めに leave を知らせる。
+ * 動き終えたあとは、次にポインタが動いたときに知らせる（引き直しのために picking を呼ばない）。
+ * ドラッグのあいだは、MapLibre は mousemove を出さず、deck.gl はボタンを押したままの pointermove で picking をしない。
+ */
+export const watchPointer = (
+  handle: MapHandle,
+  listener: (event: MapPointerEvent) => void,
+): (() => void) => {
+  const { map, overlay } = handle;
+  /** ポインタが地図の上にあるか */
+  let inside = false;
+  let moving = false;
+
+  const notify = (info: PickingInfo): void => {
+    const { x, y } = info;
+    const { lng, lat } = map.unproject([x, y]);
+    const [municipality] = map.queryRenderedFeatures([x, y], {
+      layers: [ADMIN_LAYER_IDS.municipalityFill],
+    });
+    const code: unknown = municipality?.properties[ADMIN_TILE_CODE_PROPERTY];
+    const feature =
+      info.picked && info.layer !== null && info.layer !== undefined
+        ? {
+            layerId: info.layer.id,
+            index: info.index,
+            properties: pickedProperties(info.object),
+          }
+        : null;
+    const container = map.getContainer();
+    listener({
+      kind: "hover",
+      hit: { lon: lng, lat, municipalityCode: typeof code === "string" ? code : null, feature },
+      x,
+      y,
+      width: container.clientWidth,
+      height: container.clientHeight,
+    });
+  };
+
+  // deck.gl の onHover は、地図の外に出たあと（x が -1）にも呼ばれる
+  const onHover = (info: PickingInfo): void => {
+    if (moving || !inside || info.x < 0) {
+      return;
+    }
+    notify(info);
+  };
+  const onMouseMove = (): void => {
+    inside = true;
+  };
+  const onMouseOut = (): void => {
+    inside = false;
+    listener({ kind: "leave" });
+  };
+  const onMoveStart = (): void => {
+    moving = true;
+    listener({ kind: "leave" });
+  };
+  // 動き終えても引き直さず、次にポインタが動いたときの deck.gl の onHover を待つ。
+  // 動き終えた直後に pickObject を呼ぶと、100 万点を重ねた地図では、カメラが変わったあとの最初の picking（50〜90ms）に
+  // GPU が最後のフレームを描き終えるのを待つ時間が加わり、1 フレームが 330〜450ms に延びた（2026-11-10）
+  const onMoveEnd = (): void => {
+    moving = false;
+  };
+
+  overlay.setProps({ onHover, pickingRadius: PICKING_RADIUS });
+  map.on("mousemove", onMouseMove);
+  map.on("mouseout", onMouseOut);
+  map.on("movestart", onMoveStart);
+  map.on("moveend", onMoveEnd);
+  return () => {
+    overlay.setProps({ onHover: null });
+    map.off("mousemove", onMouseMove);
+    map.off("mouseout", onMouseOut);
+    map.off("movestart", onMoveStart);
+    map.off("moveend", onMoveEnd);
+  };
 };

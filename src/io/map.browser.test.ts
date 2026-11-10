@@ -6,15 +6,18 @@ import { buildMeshGeometry } from "../core/mesh/geometry";
 import { meshCodeToBounds } from "../core/mesh/mesh-code";
 import { adminFillSpec } from "../core/render/admin";
 import { meshLayerSpec } from "../core/render/mesh";
+import { pointLayerSpec } from "../core/render/overlay";
 import type { Result } from "../core/result";
 import {
   ADMIN_LAYER_IDS,
   ADMIN_SOURCE_ID,
   type MapHandle,
+  type MapPointerEvent,
   setAdminFill,
   setOverlayLayers,
   startMap,
   stopMap,
+  watchPointer,
 } from "./map";
 
 // ネットワークに頼らないよう、背景地図は背景色だけのスタイルにする。
@@ -249,5 +252,181 @@ describe("setOverlayLayers", () => {
 
     show(Number.NaN, "none");
     expect(await waitForPixel(h.map, meshCenter, SEA)).toEqual(SEA);
+  });
+});
+
+describe("watchPointer", () => {
+  const POINT_COLOR = [29, 78, 216, 255];
+  const POINT_LAYER = "rjm-dataset-p";
+
+  /** メッシュの中央に点を1つ置いた地図 */
+  const startWithPoint = async (): Promise<MapHandle> => {
+    const h = unwrap(await start(baseStyle(VALID_METADATA)));
+    handle = h;
+    const point = pointLayerSpec(POINT_LAYER, [meshCenter[1]], [meshCenter[0]], {
+      color: "#1d4ed8",
+      size: 6,
+      visible: true,
+    });
+    unwrap(setOverlayLayers(h, { mesh: null, points: [point], geoJsons: [] }));
+    expect(await waitForPixel(h.map, meshCenter, POINT_COLOR)).toEqual(POINT_COLOR);
+    return h;
+  };
+
+  /** 地図の要素の中の位置に、マウスの事象を送る */
+  const mouse = (
+    h: MapHandle,
+    type: string,
+    x: number,
+    y: number,
+    options: MouseEventInit = {},
+    target: EventTarget = h.map.getCanvasContainer(),
+  ): void => {
+    const rect = h.map.getCanvasContainer().getBoundingClientRect();
+    target.dispatchEvent(
+      new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + x,
+        clientY: rect.top + y,
+        ...options,
+      }),
+    );
+  };
+
+  /**
+   * ポインタを動かす。ブラウザと同じく、pointermove（deck.gl が地図のキャンバスで聞く）と
+   * mousemove（MapLibre が地図の要素で聞く）の両方を送る
+   */
+  const move = (h: MapHandle, x: number, y: number): void => {
+    const canvas = h.map.getCanvas();
+    mouse(h, "pointermove", x, y, {}, canvas);
+    mouse(h, "mousemove", x, y, {}, canvas);
+  };
+
+  const leave = (h: MapHandle, x: number, y: number): void => {
+    const canvas = h.map.getCanvas();
+    mouse(h, "pointerleave", x, y, { relatedTarget: document.body }, canvas);
+    mouse(h, "mouseout", x, y, { relatedTarget: document.body }, canvas);
+  };
+
+  /** events に条件に合う知らせが届くまで、フレームを描かせて待つ */
+  const waitFor = async (
+    h: MapHandle,
+    events: readonly MapPointerEvent[],
+    from: number,
+    match: (e: MapPointerEvent) => boolean,
+  ): Promise<MapPointerEvent> => {
+    for (let i = 0; i < 60; i++) {
+      const found = events.slice(from).find(match);
+      if (found !== undefined) {
+        return found;
+      }
+      await new Promise((resolve) => {
+        h.map.once("render", resolve);
+        h.map.triggerRepaint();
+      });
+    }
+    throw new Error(`届かなかった: ${JSON.stringify(events.slice(from))}`);
+  };
+
+  const isHover = (e: MapPointerEvent): e is Extract<MapPointerEvent, { kind: "hover" }> =>
+    e.kind === "hover";
+
+  it("自前データの点を拾い、ポインタの経緯度と一緒に知らせる。地図の外に出たら leave を知らせる", async () => {
+    const h = await startWithPoint();
+    const events: MapPointerEvent[] = [];
+    const stop = watchPointer(h, (e) => events.push(e));
+    const at = h.map.project(meshCenter);
+
+    move(h, at.x, at.y);
+    const onPoint = await waitFor(h, events, 0, isHover);
+    if (!isHover(onPoint)) throw new Error("hover でない");
+    expect(onPoint.hit.feature).toMatchObject({ layerId: POINT_LAYER, index: 0 });
+    expect(onPoint.hit.lon).toBeCloseTo(meshCenter[0], 3);
+    expect(onPoint.hit.lat).toBeCloseTo(meshCenter[1], 3);
+    // admin.pmtiles を置いていないので、市区町村の塗りの地物はない
+    expect(onPoint.hit.municipalityCode).toBeNull();
+    expect(onPoint).toMatchObject({ width: 400, height: 300 });
+
+    const before = events.length;
+    move(h, at.x + 60, at.y);
+    const away = await waitFor(h, events, before, isHover);
+    expect(isHover(away) && away.hit.feature).toBeNull();
+
+    const left = events.length;
+    leave(h, at.x + 60, at.y);
+    expect(events.slice(left)).toEqual([{ kind: "leave" }]);
+    stop();
+  });
+
+  it("地図が動き始めたら leave を知らせ、動いているあいだは知らせず、動き終えたあとはポインタが動くと知らせる", async () => {
+    const h = await startWithPoint();
+    const events: MapPointerEvent[] = [];
+    const stop = watchPointer(h, (e) => events.push(e));
+    const at = h.map.project(meshCenter);
+    move(h, at.x, at.y);
+    await waitFor(h, events, 0, isHover);
+
+    const moved = new Promise((resolve) => h.map.once("moveend", resolve));
+    const before = events.length;
+    h.map.easeTo({ zoom: h.map.getZoom() + 0.5, duration: 200 });
+    // 動いているあいだにポインタを動かしても知らせない
+    for (let i = 0; i < 5; i++) {
+      move(h, at.x + i, at.y);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    await moved;
+    // 動き終えただけでは引き直さない
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    expect(events.slice(before)).toEqual([{ kind: "leave" }]);
+    // ポインタが動けば知らせる。ズームの中心の点は同じ位置に残る
+    move(h, at.x, at.y);
+    const after = await waitFor(h, events, before + 1, isHover);
+    expect(isHover(after) && after.hit.feature).toMatchObject({ layerId: POINT_LAYER });
+    stop();
+  });
+
+  it("ドラッグで地図を動かしても click にならない（MapLibre の clickTolerance）", async () => {
+    const h = await startWithPoint();
+    const events: MapPointerEvent[] = [];
+    const stop = watchPointer(h, (e) => events.push(e));
+    const clicks: unknown[] = [];
+    h.map.on("click", (e) => clicks.push(e));
+
+    // 動かさずに押して離すと click になる
+    mouse(h, "mousedown", 100, 100, { button: 0, buttons: 1 });
+    mouse(h, "mouseup", 100, 100, { button: 0, buttons: 0 });
+    mouse(h, "click", 100, 100, { button: 0 });
+    expect(clicks).toHaveLength(1);
+
+    // 20px 動かして離すと、地図は動くが click にはならない
+    const moved = new Promise((resolve) => h.map.once("moveend", resolve));
+    mouse(h, "mousedown", 100, 100, { button: 0, buttons: 1 });
+    for (const x of [105, 110, 115, 120]) {
+      mouse(h, "mousemove", x, 100, { button: 0, buttons: 1 }, document);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    mouse(h, "mouseup", 120, 100, { button: 0, buttons: 0 });
+    mouse(h, "click", 120, 100, { button: 0 });
+    await moved;
+    expect(clicks).toHaveLength(1);
+    expect(events.map((e) => e.kind)).toContain("leave");
+    stop();
+  });
+
+  it("やめたあとは知らせない", async () => {
+    const h = await startWithPoint();
+    const events: MapPointerEvent[] = [];
+    watchPointer(h, (e) => events.push(e))();
+    const at = h.map.project(meshCenter);
+    move(h, at.x, at.y);
+    leave(h, at.x, at.y);
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    expect(events).toEqual([]);
   });
 });

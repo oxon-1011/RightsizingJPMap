@@ -147,10 +147,14 @@ const pointData = (spec: PointLayerSpec): PointData => {
 /** 点の縁取り。濃い塗りの上でも点を見つけられるよう、白で囲む */
 const POINT_STROKE = { color: [255, 255, 255, 255], widthPixels: 1.5 } as const;
 
-/** 自前データの点のレイヤー */
+/**
+ * 自前データの点のレイヤー。ホバーのカードのために picking の対象にする（線と面も同じ）。
+ * メッシュは picking の対象にしない。メッシュの値は、ポインタの経緯度からメッシュコードを計算して引く
+ */
 export const pointLayer = (spec: PointLayerSpec): ScatterplotLayer<PointData> =>
   new ScatterplotLayer<PointData>({
     id: spec.id,
+    pickable: true,
     data: pointData(spec),
     getFillColor: deckColor(spec.color),
     getRadius: spec.radiusPixels,
@@ -166,6 +170,7 @@ export const pointLayer = (spec: PointLayerSpec): ScatterplotLayer<PointData> =>
 export const geoJsonLayer = ({ spec, data }: GeoJsonOverlay): GeoJsonLayer =>
   new GeoJsonLayer({
     id: spec.id,
+    pickable: true,
     data,
     filled: spec.fillColor !== null,
     stroked: true,

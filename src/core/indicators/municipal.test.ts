@@ -2,7 +2,12 @@
 // 実データでの確認は tottori.test.ts に置いている。
 
 import { describe, expect, it } from "vitest";
-import { computeMunicipalIndicator, type MunicipalTable, parseMunicipalTable } from "./municipal";
+import {
+  computeMunicipalIndicator,
+  type MunicipalTable,
+  parseMunicipalNames,
+  parseMunicipalTable,
+} from "./municipal";
 
 const f64 = (...values: number[]) => Float64Array.from(values);
 
@@ -66,6 +71,33 @@ describe("computeMunicipalIndicator", () => {
     expect(computeMunicipalIndicator(table(), "pop", 2055)).toEqual({
       ok: false,
       error: { kind: "unavailable-year", id: "pop", year: 2055 },
+    });
+  });
+});
+
+describe("parseMunicipalNames", () => {
+  it("地域の名前を団体コードで、都道府県の名前を2桁の都道府県コードで引けるようにする", () => {
+    const names = parseMunicipalNames({
+      ...columns,
+      name: ["鳥取県", "鳥取市", "米子市", "鳥取県", "鳥取市", "米子市"],
+    });
+    expect(names).toEqual({
+      ok: true,
+      value: {
+        areas: new Map([
+          ["31000", "鳥取県"],
+          ["31201", "鳥取市"],
+          ["31202", "米子市"],
+        ]),
+        prefectures: new Map([["31", "鳥取県"]]),
+      },
+    });
+  });
+
+  it("name の列がなければ拒否する", () => {
+    expect(parseMunicipalNames(columns)).toEqual({
+      ok: false,
+      error: { kind: "missing-column", column: "name" },
     });
   });
 });

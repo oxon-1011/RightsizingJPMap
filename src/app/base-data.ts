@@ -13,8 +13,10 @@ import {
 import type { DataFile } from "../core/data/url";
 import type { Columns } from "../core/indicators/columns";
 import {
+  type MunicipalNames,
   type MunicipalTable,
   paintedMunicipalCodes,
+  parseMunicipalNames,
   parseMunicipalTable,
 } from "../core/indicators/municipal";
 import { parseAdminGeomIndex } from "../core/join/admin";
@@ -35,6 +37,8 @@ export type MunicipalBase = {
   readonly table: MunicipalTable;
   /** 地図で塗る単位の団体コード。自前データの code 列の検査と、値のない地域を埋めるのに使う */
   readonly paintedCodes: ReadonlySet<string>;
+  /** 地域と都道府県の名前。ホバーのカードに出す */
+  readonly names: MunicipalNames;
 };
 
 export type BaseData = {
@@ -76,6 +80,7 @@ const memo = <T>(load: () => Promise<Result<T, AppError>>) => {
 
 const MUNICIPAL_TABLE_COLUMNS: readonly string[] = [
   MUNICIPAL_COLUMNS.code,
+  MUNICIPAL_COLUMNS.name,
   MUNICIPAL_COLUMNS.areaType,
   MUNICIPAL_COLUMNS.year,
   MUNICIPAL_COLUMNS.pop,
@@ -181,10 +186,19 @@ export const createBaseData = (
     if (!read.ok) {
       return err(baseError(file, parquetMessage(read.error)));
     }
-    const table = parseMunicipalTable(Object.fromEntries(read.value.columns));
-    return table.ok
-      ? ok({ table: table.value, paintedCodes: paintedMunicipalCodes(table.value) })
-      : err(baseError(file, JSON.stringify(table.error)));
+    const columns = Object.fromEntries(read.value.columns);
+    const table = parseMunicipalTable(columns);
+    if (!table.ok) {
+      return err(baseError(file, JSON.stringify(table.error)));
+    }
+    const names = parseMunicipalNames(columns);
+    return names.ok
+      ? ok({
+          table: table.value,
+          paintedCodes: paintedMunicipalCodes(table.value),
+          names: names.value,
+        })
+      : err(baseError(file, JSON.stringify(names.error)));
   });
 
   const adminGeomIndex = memo(async (): Promise<Result<AdminGeomIndex, AppError>> => {

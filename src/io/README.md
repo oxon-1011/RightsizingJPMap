@@ -13,7 +13,7 @@ hyparquet、DuckDB-WASM、OPFS、Web Locks、MapLibre、deck.gl の呼び出し�
 | `duckdb.ts` | DuckDB-WASM | `startDuckDb`、`stopDuckDb`、`registerFile`、`dropFile`、`query`、`readFileBytes`、`loadSpatial` |
 | `opfs.ts` | OPFS、`navigator.storage` | `openStorage`、`openMemoryStorage`、`requestPersistence`、`isPersisted` |
 | `tabs.ts` | Web Locks、BroadcastChannel | `acquireWriterLock`、`openManifestChannel` |
-| `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`fitBBox` |
+| `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`fitBBox`、`watchPointer` |
 | `deck-layers.ts` | deck.gl のレイヤー | `parseOverlayGeoJson`（レイヤーの組み立ては `setOverlayLayers` が呼ぶ） |
 | `bytes.ts` | `fetch`、`Blob.arrayBuffer` | `fetchBytes`、`readBlobBytes` |
 
@@ -146,6 +146,26 @@ setOverlayLayers(map, {
 
 `fitBBox` は、範囲が収まるように地図を動かす（場所への移動、D21）。
 
+`watchPointer` は、ホバーのカードのために、ポインタの下のものを知らせる。
+知らせは2種類で、`hover` はポインタの位置、地図の要素の大きさ、ポインタの下のもの（core の `HoverHit`）を持つ。
+`leave` は、ポインタが地図の外に出たときと、地図が動き始めたときに知らせる。
+
+- **自前データ**：deck.gl の picking の結果（`onHover`）を使う。picking の対象は自前データの点、線、面のレイヤーだけで（`deck-layers.ts`）、メッシュは対象にしない。拾う半径は `PICKING_RADIUS`（3px）にした。幅 2px の線を拾えるようにするためである。
+- **市区町村**：市区町村の塗りのレイヤーを `queryRenderedFeatures` で引き、団体コードを返す。メッシュを塗っているあいだは塗りのレイヤーを隠しているので、null になる。
+- **経緯度**：ポインタの位置を `unproject` する。メッシュコードは app が core で計算する。
+
+知らせの回数は、フレームごとに1回である。
+interleaved の deck.gl は、地図のキャンバスの pointermove を自分で聞き、次のフレームでまとめて1回だけ picking をして `onHover` を呼ぶ。
+`watchPointer` は、その `onHover` から知らせる。
+MapboxOverlay は、interleaved では MapLibre の mousemove を deck.gl に渡さない（overlaid のときだけ渡す）。
+
+地図が動いているあいだ（`movestart` から `moveend` まで）は、知らせない。
+ドラッグのあいだは、MapLibre が mousemove を出さず、deck.gl もボタンを押したままの pointermove では picking をしないので、picking の負荷もかからない。
+動き終えても引き直さず、次にポインタが動いたときに知らせる。
+動き終えた直後に `pickObject` で引き直すと、100 万点を重ねた地図では、その1フレームが 330〜450ms に延びたからである（2026-11-10、本番用のビルドの Chrome で測った）。
+カメラが変わったあとの最初の picking は 50〜90ms かかり（2回目からは約 10ms）、動き終えた直後はそれに、GPU が最後のフレームを描き終えるのを待つ時間が加わる。
+クリックは扱わない。MapLibre は、押した位置から 3px（`clickTolerance` の既定）以上動かして離すと、`click` を出さない（`map.browser.test.ts` で確かめている）。
+
 地図は回転と傾きを止め、ズームを 4〜16 に限っている。
 地理院の最適化ベクトルタイルが z4 からしかなく、z4 未満では背景地図が描かれないからである。
 
@@ -184,6 +204,9 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 - **メッシュ**：`SolidPolygonLayer` に、`src/core/mesh/geometry.ts` のバイナリ形式（`_normalize: false`、三角形の頂点の番号つき）で渡す。色は頂点ごとの RGBA を `getFillColor` のバイナリとして渡す。`dataComparator` で同じ `MeshGeometry` から作った data を同じとみなし、形の作り直しを止める。
 - **点**：`ScatterplotLayer` に、座標をバイナリ形式で渡す。半径はピクセルで指定し、濃い塗りの上でも見えるよう White の 1.5px の縁取りを付ける。
 - **線と面**：`GeoJsonLayer` に渡す。面は `GeoJsonLayerSpec.fillColor`（半透明）で塗り、枠を描く。
+
+点、線、面は、ホバーのカードのために `pickable` にする。
+点の picking の結果は点の番号だけで、線と面は GeoJSON の地物（`properties` を含む）が返る。
 
 `parseOverlayGeoJson` は、OPFS から読んだ GeoJSON のバイト列を JSON として読むだけで、中身は検査しない。
 取り込みのときに core の `checkGeoJson` を通ったファイルを渡す前提である。
@@ -266,4 +289,6 @@ Playwright（1.65.0）は Chromium に `--enable-unsafe-swiftshader` を渡す�
 ネットワークを使わないよう、背景地図は背景色だけのスタイルを Blob の URL で渡す。
 admin.pmtiles は置かないので、そのタイルの取得の失敗がログに出るが、feature-state の読み書きは確かめられる。
 メッシュは、描かれた画素の色を読んで、色の差し替えが画面に届くことを確かめる。
+`watchPointer` は、地図のキャンバスに pointermove（deck.gl が聞く）と mousemove（MapLibre が聞く）の両方を送って確かめる。
+ブラウザも、マウスを動かすとこの2つを出す。
 deck.gl のレイヤーの組み立て（`deck-layers.ts`）は、WebGL がなくても作れるので、node のテスト（`deck-layers.test.ts`）にしている。

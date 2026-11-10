@@ -9,7 +9,7 @@ import type { AdminFillSpec } from "../core/render/admin";
 import type { Result } from "../core/result";
 import type { ManifestError } from "../core/storage/manifest";
 import type { OverlayLayers } from "../io/deck-layers";
-import type { MapError } from "../io/map";
+import type { MapError, MapPointerEvent } from "../io/map";
 import type { DatasetStorage, PersistError, StorageError } from "../io/opfs";
 import type { ParquetError, ParquetFile } from "../io/parquet";
 import type { ManifestChannel, TabsError, WriterLock } from "../io/tabs";
@@ -19,6 +19,8 @@ export type MapView = {
   readonly setAdminFill: (spec: AdminFillSpec) => Result<void, MapError>;
   readonly setOverlayLayers: (layers: OverlayLayers) => Result<void, MapError>;
   readonly fitBBox: (bbox: BBox) => void;
+  /** ポインタの下のものを知らせる（ホバーのカード）。返した関数で知らせるのをやめる */
+  readonly watchPointer: (listener: (event: MapPointerEvent) => void) => () => void;
   readonly stop: () => void;
 };
 
