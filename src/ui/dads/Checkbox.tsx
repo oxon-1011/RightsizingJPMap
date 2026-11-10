@@ -3,6 +3,7 @@
 // 変更：
 // - Tailwind v4 に合わせて、focus:outline を除き（v4 の outline は幅 1px を指定し、outline-4 と競合する）、
 //   CSS 変数の任意の値を [--x] から (--x) の書き方に、重要度の指定を前置の ! から後置の ! に直した。
+// - マウスで開いた設定でも枠が出ないよう、フォーカスの枠を focus から focus-visible に変えた（キーボードで操作したときだけ出る）。
 // - biome の lint の除外の注釈と、整形。
 
 import type { ComponentProps } from "react";
@@ -36,7 +37,7 @@ export const Checkbox = (props: CheckboxProps) => {
         className={`
           appearance-none size-3/4 rounded-[calc(2/18*100%)] border-solid-gray-600 bg-white bg-clip-padding
           hover:border-black
-          focus:outline-4 focus:outline-black focus:outline-offset-[calc(2/16*1rem)] focus:ring-[calc(2/16*1rem)] focus:ring-yellow-300
+          focus-visible:outline-4 focus-visible:outline-black focus-visible:outline-offset-[calc(2/16*1rem)] focus-visible:ring-[calc(2/16*1rem)] focus-visible:ring-yellow-300
           checked:border-key-900 checked:bg-key-900 checked:hover:border-key-1100 checked:hover:bg-key-1100
           indeterminate:border-key-900 indeterminate:bg-key-900 indeterminate:hover:border-key-1100 indeterminate:hover:bg-key-1100
           before:hidden before:size-3.5 before:bg-white
