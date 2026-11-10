@@ -1,6 +1,6 @@
 // 画面が呼ぶ手続きをまとめる。ストア（store.ts）を持ち、io（ports.ts の口）と core の関数をつなぐ。
 // 状態の判断は core の reduce が行い、ここでは副作用の順序を決めて、結果を reduce に渡す。
-// 単位、指標、年、データが変わると、ストアの購読から地図を描き直す。
+// 単位、指標、年、データが変わると、ストアの購読から地図を描き直す。背景地図の表示も、購読から地図に渡す。
 
 import { isLargeFile } from "../core/accept/file";
 import type { Place } from "../core/data/schema";
@@ -33,7 +33,12 @@ import { type AppStore, createAppStore } from "./store";
 export type UiAction = Extract<
   Action,
   {
-    readonly type: "unit-selected" | "year-selected" | "indicator-selected" | "notice-dismissed";
+    readonly type:
+      | "unit-selected"
+      | "year-selected"
+      | "indicator-selected"
+      | "notice-dismissed"
+      | "basemap-visibility-changed";
   }
 >;
 
@@ -46,7 +51,7 @@ export type App<Container> = {
   /** 地図を作って描く。前の地図があれば片付ける */
   readonly attachMap: (container: Container) => Promise<Result<void, AppError>>;
   readonly detachMap: () => void;
-  /** 単位、年、指標の切り替えと、通知を閉じる操作。地図はストアの購読から描き直す */
+  /** 単位、年、指標、背景地図の表示の切り替えと、通知を閉じる操作。地図はストアの購読から描き直す */
   readonly dispatch: (action: UiAction) => void;
   /** ファイルを1つずつ取り込む。拒否は通知に出す */
   readonly importFiles: (files: readonly ImportFile[]) => Promise<void>;
@@ -269,6 +274,14 @@ export const createApp = <Container>(
     void render();
   };
 
+  /** 背景地図の表示を地図に渡す。塗り分けとは別に、すぐに反映する */
+  const applyBasemap = (view: MapView): void => {
+    const shown = view.setBasemapVisibility(getState().basemap);
+    if (!shown.ok) {
+      report({ kind: "map", error: shown.error });
+    }
+  };
+
   const unsubscribeStore = store.subscribe((next, prev) => {
     const a = next.state;
     const b = prev.state;
@@ -284,6 +297,9 @@ export const createApp = <Container>(
       a.datasets !== b.datasets
     ) {
       requestRender();
+    }
+    if (a.basemap !== b.basemap && map !== null) {
+      applyBasemap(map);
     }
   });
 
@@ -320,6 +336,8 @@ export const createApp = <Container>(
     }
     map = started.value;
     unwatchPointer = map.watchPointer(hover.onPointer);
+    // スタイルの既定はすべて表示。地図を作り直したときも、選んでいた表示に合わせる
+    applyBasemap(map);
     await render();
     return ok(undefined);
   };

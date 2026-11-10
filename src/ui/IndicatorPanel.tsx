@@ -1,11 +1,14 @@
 // 左上のパネル。指標のセレクトボックス、凡例、単位の切り替えを縦に並べる（Figma の「Panel / 指標」）。
 // 見出しや説明文は置かない。自前データの指標を選んだときだけ、分母のセレクトボックスを出す（D24）。
+// 単位の切り替えの右に、背景地図の設定を開く歯車を置く（段階 7.5 の 5.。Figma の画面にはまだない）。
 
 import type { Classification } from "../core/classify/classify";
 import { classificationOf } from "../core/classify/scales";
 import { INDICATORS, type Unit } from "../core/indicators/definitions";
+import type { BasemapLayerGroup, BasemapVisibility } from "../core/render/basemap";
 import type { IndicatorSelection } from "../core/state/state";
 import type { DatasetEntry } from "../core/storage/manifest";
+import { BasemapSettings } from "./BasemapSettings";
 import { Select } from "./dads/Select";
 import {
   DENOMINATOR_OPTIONS,
@@ -27,8 +30,11 @@ type IndicatorPanelProps = {
    * まだ作れていなければ null で、凡例を出さない。ベースデータの指標では使わない。
    */
   joinedClassification: Classification | null;
+  /** 背景地図の鉄道、道路、川を表示するか */
+  basemap: BasemapVisibility;
   onIndicatorChange: (indicator: IndicatorSelection) => void;
   onUnitChange: (unit: Unit) => void;
+  onBasemapChange: (group: BasemapLayerGroup, visible: boolean) => void;
 };
 
 /** 凡例に使う階級区分と数字の種類 */
@@ -57,8 +63,10 @@ export const IndicatorPanel = ({
   indicator,
   datasets,
   joinedClassification,
+  basemap,
   onIndicatorChange,
   onUnitChange,
+  onBasemapChange,
 }: IndicatorPanelProps) => {
   const groups = indicatorOptionGroups(unit, datasets, indicator);
   const options = groups.flatMap((g) => g.options);
@@ -119,7 +127,10 @@ export const IndicatorPanel = ({
         </Select>
       )}
       {legend !== null && <Legend classification={legend.classification} scale={legend.scale} />}
-      <UnitSwitch unit={unit} onChange={onUnitChange} />
+      <div className="flex w-full items-center justify-between">
+        <UnitSwitch unit={unit} onChange={onUnitChange} />
+        <BasemapSettings visibility={basemap} onChange={onBasemapChange} />
+      </div>
     </section>
   );
 };

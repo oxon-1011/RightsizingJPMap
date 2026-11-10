@@ -22,6 +22,12 @@ import type { Rgba } from "../core/classify/color";
 import { ADMIN_TILE_CODE_PROPERTY, ADMIN_TILE_LAYERS, type BBox } from "../core/data/schema";
 import type { HoverHit } from "../core/hover/hover";
 import type { AdminFillSpec } from "../core/render/admin";
+import {
+  type BasemapLayerIds,
+  type BasemapVisibility,
+  basemapLayerVisibility,
+  parseBasemapLayerIds,
+} from "../core/render/basemap";
 import { err, ok, type Result } from "../core/result";
 import { type OverlayLayers, overlayDeckLayers } from "./deck-layers";
 
@@ -48,6 +54,12 @@ export type InsertBefore = { readonly choropleth: string; readonly boundary: str
 
 const INSERT_BEFORE_KEY = "rjm:insertBefore";
 
+/**
+ * 背景地図のスタイルの metadata に書く、表示を切り替える単位（鉄道、道路、川）ごとのレイヤーの ID。
+ * 単位は core の BASEMAP_LAYER_GROUPS で決まり、ID はスタイルが決める
+ */
+const LAYER_GROUPS_KEY = "rjm:layerGroups";
+
 /** 地図の最小と最大のズーム。地理院の最適化ベクトルタイルは z4〜16 で、z4 未満では背景地図が描かれない */
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 16;
@@ -59,6 +71,8 @@ export type MapHandle = {
   readonly map: MapLibreMap;
   readonly overlay: MapboxOverlay;
   readonly insertBefore: InsertBefore;
+  /** 表示を切り替える単位ごとの、背景地図のレイヤーの ID */
+  readonly basemapLayers: BasemapLayerIds;
 };
 
 export type MapError =
@@ -66,7 +80,7 @@ export type MapError =
   | { readonly kind: "create-failed"; readonly message: string }
   /** 背景地図のスタイルを読めなかった */
   | { readonly kind: "style-failed"; readonly message: string }
-  /** 背景地図のスタイルの metadata に、差し込む位置がないか、そのレイヤーがない */
+  /** 背景地図のスタイルの metadata に、差し込む位置か切り替える単位のレイヤーがないか、そのレイヤーがスタイルにない */
   | { readonly kind: "style-contract"; readonly message: string }
   /** 行政区域のレイヤーや deck.gl を足す、または更新するときに MapLibre か deck.gl が例外を投げた */
   | { readonly kind: "update-failed"; readonly message: string };
@@ -130,6 +144,25 @@ const readInsertBefore = (map: MapLibreMap): Result<InsertBefore, MapError> => {
     });
   }
   return ok({ choropleth, boundary });
+};
+
+/** スタイルの metadata から、切り替える単位ごとのレイヤーの ID を読む。レイヤーがスタイルにあることも確かめる */
+const readLayerGroups = (map: MapLibreMap): Result<BasemapLayerIds, MapError> => {
+  const metadata: unknown = map.getStyle().metadata;
+  const parsed = parseBasemapLayerIds(isRecord(metadata) ? metadata[LAYER_GROUPS_KEY] : undefined);
+  if (!parsed.ok) {
+    return err({ kind: "style-contract", message: `${LAYER_GROUPS_KEY}: ${parsed.error}` });
+  }
+  const missing = Object.values(parsed.value)
+    .flat()
+    .filter((id) => map.getLayer(id) === undefined);
+  if (missing.length > 0) {
+    return err({
+      kind: "style-contract",
+      message: `スタイルにないレイヤー: ${missing.join(", ")}`,
+    });
+  }
+  return parsed;
 };
 
 /**
@@ -280,6 +313,11 @@ export const startMap = async (options: StartMapOptions): Promise<Result<MapHand
     map.remove();
     return insert;
   }
+  const basemapLayers = readLayerGroups(map);
+  if (!basemapLayers.ok) {
+    map.remove();
+    return basemapLayers;
+  }
   try {
     addAdminLayers(map, options.adminTilesUrl, insert.value);
     exposeTransformForDeck(map);
@@ -291,7 +329,12 @@ export const startMap = async (options: StartMapOptions): Promise<Result<MapHand
       new AttributionControl({ customAttribution: attributionHtml(options.attributionDetailsUrl) }),
       "bottom-right",
     );
-    return ok({ map, overlay, insertBefore: insert.value });
+    return ok({
+      map,
+      overlay,
+      insertBefore: insert.value,
+      basemapLayers: basemapLayers.value,
+    });
   } catch (e) {
     map.remove();
     return err({ kind: "update-failed", message: messageOf(e) });
@@ -340,6 +383,24 @@ export const setOverlayLayers = (
     handle.overlay.setProps({
       layers: [...overlayDeckLayers(layers, handle.insertBefore.choropleth)],
     });
+    return ok(undefined);
+  } catch (e) {
+    return err({ kind: "update-failed", message: messageOf(e) });
+  }
+};
+
+/**
+ * 背景地図の鉄道、道路、川の表示を切り替える。layout の visibility を変えるだけで、タイルは読み直さない。
+ * 川（river）は塗りを差し込む位置でもあるが、隠しても位置は変わらない。
+ */
+export const setBasemapVisibility = (
+  handle: MapHandle,
+  visibility: BasemapVisibility,
+): Result<void, MapError> => {
+  try {
+    for (const { id, visible } of basemapLayerVisibility(handle.basemapLayers, visibility)) {
+      handle.map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+    }
     return ok(undefined);
   } catch (e) {
     return err({ kind: "update-failed", message: messageOf(e) });

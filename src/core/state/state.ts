@@ -11,6 +11,11 @@ import {
 } from "../indicators/definitions";
 import type { JoinMeasure } from "../join/aggregate";
 import {
+  ALL_BASEMAP_LAYERS_VISIBLE,
+  type BasemapLayerGroup,
+  type BasemapVisibility,
+} from "../render/basemap";
+import {
   type DatasetEntry,
   type JoinTarget,
   type LayerStyle,
@@ -76,6 +81,8 @@ export type AppState = {
   readonly notices: readonly Notice[];
   /** 次の通知に付ける番号。乱数を使わずに通知を見分けるため */
   readonly nextNoticeId: number;
+  /** 背景地図の鉄道、道路、川を表示するか。再読み込みで既定（すべて表示）に戻る */
+  readonly basemap: BasemapVisibility;
 };
 
 /** 既定の指標。Figma の「01 地図（基本）」と同じ、2050 年の高齢化率のメッシュ */
@@ -89,6 +96,7 @@ export const INITIAL_STATE: AppState = {
   access: "pending",
   notices: [],
   nextNoticeId: 1,
+  basemap: ALL_BASEMAP_LAYERS_VISIBLE,
 };
 
 export type Action =
@@ -107,7 +115,12 @@ export type Action =
     }
   | { readonly type: "access-changed"; readonly access: "writer" | "read-only" }
   | { readonly type: "notified"; readonly notice: NoticeBody }
-  | { readonly type: "notice-dismissed"; readonly id: number };
+  | { readonly type: "notice-dismissed"; readonly id: number }
+  | {
+      readonly type: "basemap-visibility-changed";
+      readonly group: BasemapLayerGroup;
+      readonly visible: boolean;
+    };
 
 const UNIT_TARGET: Readonly<Record<Unit, JoinTarget>> = {
   mesh: "mesh",
@@ -273,6 +286,10 @@ export const reduce = (state: AppState, action: Action): AppState => {
       return notify(state, action.notice);
     case "notice-dismissed":
       return { ...state, notices: state.notices.filter((n) => n.id !== action.id) };
+    case "basemap-visibility-changed":
+      return state.basemap[action.group] === action.visible
+        ? state
+        : { ...state, basemap: { ...state.basemap, [action.group]: action.visible } };
     default: {
       const unreachable: never = action;
       return unreachable;

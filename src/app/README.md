@@ -65,7 +65,7 @@ MapLibre の CSS（`.maplibregl-map` の `position: relative`）は Tailwind の
 
 | 部品 | 値 | 操作 |
 |---|---|---|
-| `IndicatorPanel` | `state.unit`、`state.indicator`、`state.datasets`、`runtime.joinedClassification` | `app.dispatch({ type: "indicator-selected", indicator })`、`app.dispatch({ type: "unit-selected", unit })` |
+| `IndicatorPanel` | `state.unit`、`state.indicator`、`state.datasets`、`runtime.joinedClassification`、`state.basemap` | `app.dispatch({ type: "indicator-selected", indicator })`、`app.dispatch({ type: "unit-selected", unit })`、`app.dispatch({ type: "basemap-visibility-changed", group, visible })` |
 | `YearSlider` | `trackYears(state.unit)`、`selectableYears(state.unit, state.indicator)`、`state.year` | `app.dispatch({ type: "year-selected", year })` |
 | `AddDataButton` | なし | `app.importFiles(files)` |
 | `DropOverlay` | ドラッグの深さ（画面の中の状態） | drop のファイルを `app.importFiles(files)` |
@@ -74,9 +74,10 @@ MapLibre の CSS（`.maplibregl-map` の `position: relative`）は Tailwind の
 | `PlaceSearch` | `runtime.places` の索引から core の `searchPlaces` で作った候補、`runtime.places.kind === "loading"` | 開くときに `app.loadPlaces()`、選んだら `app.moveToPlace(place)` |
 | `HoverCard` | `useHoverStore((s) => s.card)`（`app.hover` のストア） | なし |
 
-`app.dispatch` が受け付けるのは、単位、年、指標の切り替えと、通知を閉じる操作だけである（`UiAction`）。
+`app.dispatch` が受け付けるのは、単位、年、指標、背景地図の表示の切り替えと、通知を閉じる操作だけである（`UiAction`）。
 データの追加と削除は目録を書くので、`importFiles`、`removeDataset`、`clearDatasets` を通す。
 単位、年、指標、データが変わると、`app` がストアの購読から地図を描き直すので、部品から描画を呼ぶ必要はない。
+背景地図の表示も、ストアの購読から地図に渡す。
 
 ホバーのカードは、`app.store` ではなく `app.hover` のストアにある。
 カードはポインタを動かすたびに変わるので、`App.tsx` はカードだけを読む小さな部品（`HoverCardSlot`）でストアを読み、描き直しをその部品の中に閉じ込める。
@@ -110,6 +111,7 @@ React Compiler は描くときに呼ぶ関数を純粋とみなし、`app.placeC
 | `changeDatasetStyle` | `writeManifest`、`notify`（書けるタブだけ） | `updateDatasetStyle`、`reduce`（`dataset-style-changed`） |
 | `loadPlaces`、`placeCandidates`、`moveToPlace` | `fetchBytes`（places.json）、`fitBBox` | `parsePlaces`、`buildPlaceIndex`、`searchPlaces` |
 | ホバーのカード | `watchPointer`、`readParquetColumns`（総人口の列） | `meshHoverColumns`、`hoverContent`、`computeMunicipalIndicator`、`parseMunicipalNames`、`indexMeshes` |
+| 背景地図の表示 | `setBasemapVisibility` | `reduce`（`basemap-visibility-changed`） |
 
 生成物の JSON と admin_geom の都道府県のファイルは io の `fetchBytes` で、利用者のファイルは `readBlobBytes` で全体を読む。
 
@@ -195,6 +197,15 @@ Firefox は許可を求める表示を出し、利用者が答えるまで `pers
 塗り分けに使った列は `base-data.ts` が持っているので読み直さない。
 2行目の人数の列（`{年}_pop` か、分母の年齢別の人数の列）は、塗り分けに使っていなければ、カードのために1列（約 0.6MB）読む。
 ポインタが地図に乗るまでは読まない。
+
+### 背景地図の表示
+
+背景地図の鉄道、道路、川の表示（docs/design/implementation-plan.md の段階 7.5 の 5.）は、core の状態（`AppState.basemap`）に置く。
+状態の形と更新は core に置くという約束（docs/guides/coding.md）に合わせた。
+
+- **地図に渡す時期**：ストアの購読で `basemap` が変わったときに、塗り分けの描き直し（`render`）を待たずに `setBasemapVisibility` を呼ぶ。塗り分けは作り直さない。`attachMap` でも地図を作った直後に渡すので、地図を作り直しても選んだ表示が残る。
+- **保存しない**：目録にも OPFS にも書かず、再読み込みで既定（すべて表示）に戻る。モックなので、残す仕組みは足さない（D27）。
+- **閲覧専用のタブ**：目録を書かないので、閲覧専用のタブでも切り替えられる。
 
 ### 画面の通知にない失敗
 

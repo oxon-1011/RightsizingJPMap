@@ -121,8 +121,12 @@ export const App = () => {
           indicator={state.indicator}
           datasets={state.datasets}
           joinedClassification={runtime.joinedClassification}
+          basemap={state.basemap}
           onIndicatorChange={(indicator) => app.dispatch({ type: "indicator-selected", indicator })}
           onUnitChange={(unit) => app.dispatch({ type: "unit-selected", unit })}
+          onBasemapChange={(group, visible) =>
+            app.dispatch({ type: "basemap-visibility-changed", group, visible })
+          }
         />
       </div>
 

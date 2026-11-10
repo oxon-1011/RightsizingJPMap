@@ -579,6 +579,42 @@ describe("地図の描画", () => {
   });
 });
 
+describe("背景地図の表示", () => {
+  const basemapCalls = (calls: readonly MapCall[]) =>
+    calls.flatMap((c) => (c.kind === "basemap" ? [c.visibility] : []));
+
+  it("地図をつなぐときにすべて表示を渡し、切り替えるとすぐに渡す。塗り分けは描き直さない", async () => {
+    const { view, calls } = fakeMap();
+    const app = createApp(testPorts({ map: view }));
+    await app.boot();
+    await app.attachMap("map");
+    await settle();
+    expect(basemapCalls(calls)).toEqual([{ rail: true, road: true, river: true }]);
+
+    const drawn = calls.length;
+    app.dispatch({ type: "basemap-visibility-changed", group: "rail", visible: false });
+    expect(calls.slice(drawn)).toEqual([
+      { kind: "basemap", visibility: { rail: false, road: true, river: true } },
+    ]);
+    await settle();
+    expect(calls.slice(drawn).map((c) => c.kind)).toEqual(["basemap"]);
+
+    // 同じ表示を選んでも渡し直さない
+    app.dispatch({ type: "basemap-visibility-changed", group: "rail", visible: false });
+    expect(basemapCalls(calls)).toHaveLength(2);
+  });
+
+  it("地図をつなぐ前に切り替えた表示を、つないだ地図に渡す", async () => {
+    const { view, calls } = fakeMap();
+    const app = createApp(testPorts({ map: view }));
+    await app.boot();
+    app.dispatch({ type: "basemap-visibility-changed", group: "river", visible: false });
+    expect(calls).toEqual([]);
+    await app.attachMap("map");
+    expect(basemapCalls(calls)).toEqual([{ rail: true, road: true, river: false }]);
+  });
+});
+
 describe("目録から復元した表の指標", () => {
   // 正規化した Parquet の代わりに、テスト用データの Parquet を同じ形の表として置く
   const restore = async (dataset: DatasetEntry, fixture: string) => {
