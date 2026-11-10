@@ -21,7 +21,8 @@ type BasemapSettingsProps = {
 const GROUP_LABELS: Readonly<Record<BasemapLayerGroup, string>> = {
   rail: "鉄道",
   road: "道路",
-  river: "川",
+  // 水域の面には湖も入り、z8 以下では湖だけが出る
+  river: "川と湖",
 };
 
 export const BasemapSettings = ({ visibility, onChange }: BasemapSettingsProps) => {

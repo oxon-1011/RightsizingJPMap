@@ -13,7 +13,7 @@ React のコンポーネントとスタイルを置く層。
 | ファイル | 部品 | Figma のコンポーネント |
 |---|---|---|
 | `IndicatorPanel.tsx` | 左上のパネル。指標と分母のセレクトボックス、凡例（`Legend.tsx`）、単位の切り替え（`UnitSwitch.tsx`）、背景地図の設定の歯車（`BasemapSettings.tsx`） | Panel / 指標 |
-| `BasemapSettings.tsx` | 左上のパネルの歯車と、背景地図の鉄道、道路、川の表示を切り替える設定 | なし |
+| `BasemapSettings.tsx` | 左上のパネルの歯車と、背景地図の鉄道、道路、川と湖の表示を切り替える設定 | なし |
 | `YearSlider.tsx` | 下の年次スライダー | Control / 年次スライダー |
 | `AddDataButton.tsx` | 右上のデータを追加するボタン | Button / データを追加 |
 | `DropOverlay.tsx` | ファイルを重ねているあいだの覆い | Overlay / ドロップ |
@@ -55,7 +55,7 @@ React のコンポーネントとスタイルを置く層。
 
 ## 背景地図の設定
 
-`BasemapSettings.tsx` は、左上のパネルの単位の切り替えの右に歯車のボタンを置き、押すとその下に鉄道、道路、川のチェックボックス（DADS の Checkbox）を開く。
+`BasemapSettings.tsx` は、左上のパネルの単位の切り替えの右に歯車のボタンを置き、押すとその下に鉄道、道路、川と湖のチェックボックス（DADS の Checkbox）を開く。
 表示の値は app のストア（core の `AppState.basemap`）から受け取り、開閉だけを部品が持つ。
 設定の見出し「背景地図」は、スクリーンリーダー向けの `legend` にだけ置く。
 
