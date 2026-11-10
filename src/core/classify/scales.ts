@@ -28,6 +28,21 @@ const DADS_PURPLE_6: readonly Rgba[] = [
 ];
 
 /**
+ * DADS の Purple の 100、300、500、600、800、1000、1200。総人口の7階級に少ない順で使う。
+ * 色覚の型ごとの模擬で、隣どうしの色の差（CIE76 の ΔE）の最小は 10.7（3型の 800 と 1000）で、
+ * 6階級の DADS_PURPLE_6 の最小（2型の 700 と 900 で 10.7）と同じである（2026-11-10）。
+ */
+const DADS_PURPLE_7: readonly Rgba[] = [
+  hex("#ecddff"),
+  hex("#cda6ff"),
+  hex("#a565f8"),
+  hex("#8843e1"),
+  hex("#5c10be"),
+  hex("#41048e"),
+  hex("#21004b"),
+];
+
+/**
  * 人口増減率の7階級。減少の大きい順に DADS の Red の 1100、900、700、500、300、100 を使い、
  * 最後の「増加」の階級は Blue の 500 にする。暖色を人口が減る向きにそろえる。
  */
@@ -73,16 +88,29 @@ const sameForBothUnits = (c: Classification): Readonly<Record<Unit, Classificati
 const countScale = (
   mesh: readonly number[],
   municipality: readonly number[],
+  colors: readonly Rgba[],
 ): Readonly<Record<Unit, Classification>> => ({
-  mesh: { breaks: mesh, colors: DADS_PURPLE_6 },
-  municipality: { breaks: municipality, colors: DADS_PURPLE_6 },
+  mesh: { breaks: mesh, colors },
+  municipality: { breaks: municipality, colors },
 });
 
-/** 総人口。1、3、10 の刻み */
-const POP_SCALE = countScale([10, 30, 100, 300, 1000], [3000, 10000, 30000, 100000, 300000]);
+/**
+ * 総人口。1、3、10 の刻みの7階級。
+ * メッシュの 3,000 人は、人口の 8 割が入る 1,000 人以上のメッシュを、都市の中心と周りに分けるために置く（2026-11-10）。
+ * 市区町村も同じ階級の数にそろえ、下に 1,000 人を足した。
+ */
+const POP_SCALE = countScale(
+  [10, 30, 100, 300, 1000, 3000],
+  [1000, 3000, 10000, 30000, 100000, 300000],
+  DADS_PURPLE_7,
+);
 
 /** 年齢別の4指標。年齢層どうしを同じ凡例で見比べられるよう、同じ区切りにする */
-const AGE_GROUP_SCALE = countScale([3, 10, 30, 100, 300], [1000, 3000, 10000, 30000, 100000]);
+const AGE_GROUP_SCALE = countScale(
+  [3, 10, 30, 100, 300],
+  [1000, 3000, 10000, 30000, 100000],
+  DADS_PURPLE_6,
+);
 
 /**
  * 指標と単位から、階級区分と配色を引く表。値は比（0.3 が 30%）か人数。
