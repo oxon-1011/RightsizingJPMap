@@ -41,11 +41,12 @@ export default defineConfig({
             "@deck.gl/mapbox",
             // 依存の置き場が空のとき、テストの途中でこれを変換してページを読み込み直した（2026-11-09 の CI）
             "react-dom/client",
+            "zustand/vanilla",
           ],
         },
         test: {
           name: "browser",
-          include: ["src/io/**/*.browser.test.ts"],
+          include: ["src/io/**/*.browser.test.ts", "src/app/**/*.browser.test.ts"],
           // DuckDB-WASM の起動と spatial 拡張の取得に時間がかかる
           testTimeout: 60_000,
           hookTimeout: 60_000,
