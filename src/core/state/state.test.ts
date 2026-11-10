@@ -176,14 +176,15 @@ describe("書き込みの権利", () => {
     expect(state.datasets.map((d) => d.id)).toEqual(["a"]);
   });
 
-  it("閲覧専用から書き込みできる状態に移ったら通知する", () => {
+  it("閲覧専用から書き込みできる状態に移ったら、閲覧専用の通知を消して知らせる", () => {
     const state = run(
       INITIAL_STATE,
       { type: "access-changed", access: "read-only" },
+      { type: "dataset-added", entry: dataset("a", ["mesh"]) },
       { type: "access-changed", access: "writer" },
     );
     expect(state.access).toBe("writer");
-    expect(state.notices.map((n) => n.kind)).toEqual(["read-only", "became-writer"]);
+    expect(state.notices.map((n) => n.kind)).toEqual(["became-writer"]);
   });
 });
 

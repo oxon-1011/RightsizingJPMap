@@ -164,7 +164,7 @@ describe("ほかのタブとのやりとり", () => {
     await first.dispose();
     await settle();
     expect(second.store.getState().state.access).toBe("writer");
-    expect(noticeKinds(second)).toEqual(["read-only", "became-writer"]);
+    expect(noticeKinds(second)).toEqual(["became-writer"]);
     expect(await storage.listDatasets()).toEqual({ ok: true, value: [] });
   });
 });

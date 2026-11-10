@@ -254,7 +254,16 @@ export const reduce = (state: AppState, action: Action): AppState => {
       if (action.access === state.access) {
         return state;
       }
-      const next = { ...state, access: action.access };
+      // 前の権利についての通知は、権利が変わった時点で事実と合わなくなるので消す
+      const stale: ReadonlySet<NoticeBody["kind"]> =
+        action.access === "read-only"
+          ? new Set(["became-writer"])
+          : new Set(["read-only", "write-blocked"]);
+      const next = {
+        ...state,
+        access: action.access,
+        notices: state.notices.filter((n) => !stale.has(n.kind)),
+      };
       if (action.access === "read-only") {
         return notify(next, { kind: "read-only" });
       }
