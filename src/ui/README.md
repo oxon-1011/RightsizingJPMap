@@ -3,7 +3,7 @@
 React のコンポーネントとスタイルを置く層。
 部品は状態を持たず、表示する値と操作の関数を props で受け取る。
 ただし、色の候補の開閉のように、その部品の中で閉じる表示の状態は部品が持つ。
-状態は app のストア（段階 5）が持ち、地図との結線は段階 7 で行う。
+状態は app のストアが持ち、`App.tsx` がストアの値と app の手続きを部品につなぐ。
 書き方は [docs/guides/coding.md](../../docs/guides/coding.md) に従う。
 
 ## 部品の一覧
@@ -20,10 +20,12 @@ React のコンポーネントとスタイルを置く層。
 | `LayerPanel.tsx` | レイヤーの一覧 | Panel / レイヤー、Layer / 行 |
 | `PlaceSearch.tsx` | Ctrl（macOS では Command）+ K で開く場所の入力欄 | なし |
 
-右下の出典は、段階 4 で MapLibre の AttributionControl が出す。
+右下の出典は、MapLibre の AttributionControl が出す（`src/io/map.ts`）。
 
-`App.tsx` は、地図の代わりの灰色の背景の上に部品を見本の値（`samples.ts`）で並べた仮の配置である。
-`?screen=02` のように URL で Figma の画面の番号を指定すると、その画面の状態で開く。
+`App.tsx` は、画面全体に地図を広げ、その上に部品を重ねる。
+値と操作のつなぎ方は、`src/app/README.md` の「段階 7 での使い方」のとおりである。
+部品には重なりの順（`z-10` など）を付けている。
+付けないと、地図の操作の部品と出典（MapLibre の CSS で `z-index: 2`）が部品の上に重なる。
 
 ## 部品から切り出した処理
 

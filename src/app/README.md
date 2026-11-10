@@ -43,16 +43,19 @@ import { ACCEPTANCE_URL } from "../app/links";
 const state = useAppStore((s) => s.state);
 const runtime = useAppStore((s) => s.runtime);
 
-// 地図の要素。React 19 の ref の後片付けで、StrictMode の2回のつなぎ直しにも対応する
-<div
-  className="absolute inset-0"
-  ref={(el) => {
-    if (el === null) return;
-    void app.attachMap(el);
-    return () => app.detachMap();
-  }}
-/>
+// 地図の要素の ref。部品の外に置き、描き直しで地図を作り直さないようにする。
+// React 19 の ref の後片付けで、StrictMode の2回のつなぎ直しにも対応する
+const attachMapElement = (el: HTMLDivElement | null) => {
+  if (el === null) return undefined;
+  void app.attachMap(el);
+  return () => app.detachMap();
+};
+
+<div ref={attachMapElement} className="size-full" />
 ```
+
+地図の要素には `absolute` を付けない。
+MapLibre の CSS（`.maplibregl-map` の `position: relative`）は Tailwind のレイヤーの外にあるので、Tailwind の `absolute` より強い。
 
 `useAppStore` の selector は、`s.state` や `s.runtime` のようにストアにある値をそのまま返す。
 呼ぶたびに新しいオブジェクトを返す selector を渡すと、Zustand 5 では描き直しが止まらなくなる。
@@ -67,14 +70,16 @@ const runtime = useAppStore((s) => s.runtime);
 | `DropOverlay` | ドラッグの深さ（画面の中の状態） | drop のファイルを `app.importFiles(files)` |
 | `NoticeList` | `state.notices`、`ACCEPTANCE_URL` | `app.dispatch({ type: "notice-dismissed", id })` |
 | `LayerPanel` | `state.datasets` | `app.changeDatasetStyle(id, style)`、`app.removeDataset(id)`、確かめてから `app.clearDatasets()` |
-| `PlaceSearch` | `app.placeCandidates(query)`、`runtime.places.kind === "loading"` | 開くときに `app.loadPlaces()`、選んだら `app.moveToPlace(place)` |
+| `PlaceSearch` | `runtime.places` の索引から core の `searchPlaces` で作った候補、`runtime.places.kind === "loading"` | 開くときに `app.loadPlaces()`、選んだら `app.moveToPlace(place)` |
 
 `app.dispatch` が受け付けるのは、単位、年、指標の切り替えと、通知を閉じる操作だけである（`UiAction`）。
 データの追加と削除は目録を書くので、`importFiles`、`removeDataset`、`clearDatasets` を通す。
 単位、年、指標、データが変わると、`app` がストアの購読から地図を描き直すので、部品から描画を呼ぶ必要はない。
 
 場所の入力欄の開閉、入力、選んでいる候補の番号は、画面の中の状態として `App.tsx` に置く。
-`placeCandidates` はストアの値ではないので、`runtime.places` を購読しておき、読み終えたら描き直されるようにする。
+候補は `app.placeCandidates(query)` で作らず、`runtime.places` から作る。
+React Compiler は描くときに呼ぶ関数を純粋とみなし、`app.placeCandidates(query)` の結果を query だけで使い回す（babel-plugin-react-compiler 1.0.0 の出力で確かめた、2026-11-10）。
+そのため、入力欄を開いてすぐに文字を入れると、places.json を読み終えても候補が空のまま残る。
 
 `runtime` には次の値がある。
 
