@@ -40,7 +40,8 @@ export const selectionKey = (selection: IndicatorSelection): string => {
   }
 };
 
-const measureLabel = (measure: JoinMeasure): string =>
+/** 結合した指標の名前。件数か、数値の列の合計 */
+export const measureLabel = (measure: JoinMeasure): string =>
   measure.kind === "count" ? "件数" : `${measure.column} の合計`;
 
 /**
