@@ -2,7 +2,7 @@
   "version": 8,
   "name": "RightsizingJPMap の背景地図（国土地理院最適化ベクトルタイル）",
   "metadata": {
-    "rjm:insertBefore": { "choropleth": "road", "boundary": "label-place" }
+    "rjm:insertBefore": { "choropleth": "river", "boundary": "label-place" }
   },
   "sources": {
     "gsi": {
@@ -33,6 +33,14 @@
       "paint": { "fill-color": "#e6e6e6" }
     },
     {
+      "id": "river",
+      "type": "fill",
+      "source": "gsi",
+      "source-layer": "WA",
+      "filter": ["!", ["in", ["get", "vt_code"], ["literal", [5100, 5101]]]],
+      "paint": { "fill-color": "#79e2f2" }
+    },
+    {
       "id": "road",
       "type": "line",
       "source": "gsi",
@@ -40,19 +48,78 @@
       "filter": ["in", ["get", "vt_rdctg"], ["literal", ["高速自動車国道等", "国道", "主要道路"]]],
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#b3b3b3",
-        "line-opacity": 0.8,
+        "line-color": "#949494",
         "line-width": [
           "interpolate",
           ["linear"],
           ["zoom"],
           4,
-          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 0.5, 0.3],
+          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 0.6, 0.4],
           10,
-          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 1.5, 1],
+          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 1.75, 1.1],
           14,
-          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 3, 2]
+          ["match", ["get", "vt_rdctg"], "高速自動車国道等", 3.5, 2.25]
         ]
+      }
+    },
+    {
+      "id": "rail-tunnel",
+      "type": "line",
+      "source": "gsi",
+      "source-layer": "RailCL",
+      "filter": [
+        "all",
+        [
+          "in",
+          ["get", "vt_rtcode"],
+          ["literal", ["新幹線", "主要鉄道", "JR", "JR以外", "地下鉄", "路面"]]
+        ],
+        ["in", ["get", "vt_railstate"], ["literal", ["トンネル", "トンネル ", "地下"]]]
+      ],
+      "paint": {
+        "line-color": "#7f7f7f",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1, 12, 1.25, 16, 2],
+        "line-dasharray": [2, 2]
+      }
+    },
+    {
+      "id": "rail",
+      "type": "line",
+      "source": "gsi",
+      "source-layer": "RailCL",
+      "filter": [
+        "all",
+        [
+          "in",
+          ["get", "vt_rtcode"],
+          ["literal", ["新幹線", "主要鉄道", "JR", "JR以外", "地下鉄", "路面"]]
+        ],
+        ["!", ["in", ["get", "vt_railstate"], ["literal", ["トンネル", "トンネル ", "地下"]]]]
+      ],
+      "layout": { "line-join": "round" },
+      "paint": {
+        "line-color": "#333333",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.5, 8, 2, 12, 3, 16, 5]
+      }
+    },
+    {
+      "id": "rail-dash",
+      "type": "line",
+      "source": "gsi",
+      "source-layer": "RailCL",
+      "filter": [
+        "all",
+        [
+          "in",
+          ["get", "vt_rtcode"],
+          ["literal", ["新幹線", "主要鉄道", "JR", "JR以外", "地下鉄", "路面"]]
+        ],
+        ["!", ["in", ["get", "vt_railstate"], ["literal", ["トンネル", "トンネル ", "地下"]]]]
+      ],
+      "paint": {
+        "line-color": "#ffffff",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.75, 8, 1, 12, 1.5, 16, 3],
+        "line-dasharray": [3, 3]
       }
     },
     {
