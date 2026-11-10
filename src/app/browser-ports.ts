@@ -9,6 +9,7 @@ import {
   BASEMAP_STYLE_FILE,
   fitBBox,
   setAdminFill,
+  setBasemapVisibility,
   setOverlayLayers,
   startMap,
   stopMap,
@@ -63,6 +64,7 @@ const startMapView = async (container: HTMLElement) => {
   const view: MapView = {
     setAdminFill: (spec) => setAdminFill(handle, spec),
     setOverlayLayers: (layers) => setOverlayLayers(handle, layers),
+    setBasemapVisibility: (visibility) => setBasemapVisibility(handle, visibility),
     fitBBox: (bbox) => fitBBox(handle, bbox),
     watchPointer: (listener) => watchPointer(handle, listener),
     stop: () => stopMap(handle),

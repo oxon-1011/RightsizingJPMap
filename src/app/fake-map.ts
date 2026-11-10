@@ -3,6 +3,7 @@
 
 import type { BBox } from "../core/data/schema";
 import type { AdminFillSpec } from "../core/render/admin";
+import type { BasemapVisibility } from "../core/render/basemap";
 import { ok } from "../core/result";
 import type { OverlayLayers } from "../io/deck-layers";
 import type { MapPointerEvent } from "../io/map";
@@ -11,6 +12,7 @@ import type { MapView } from "./ports";
 export type MapCall =
   | { readonly kind: "admin"; readonly spec: AdminFillSpec }
   | { readonly kind: "overlay"; readonly layers: OverlayLayers }
+  | { readonly kind: "basemap"; readonly visibility: BasemapVisibility }
   | { readonly kind: "fit"; readonly bbox: BBox };
 
 export const fakeMap = (): {
@@ -38,6 +40,10 @@ export const fakeMap = (): {
       },
       setOverlayLayers: (layers) => {
         calls.push({ kind: "overlay", layers });
+        return ok(undefined);
+      },
+      setBasemapVisibility: (visibility) => {
+        calls.push({ kind: "basemap", visibility });
         return ok(undefined);
       },
       fitBBox: (bbox) => {

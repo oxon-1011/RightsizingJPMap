@@ -6,6 +6,7 @@ import type { BBox } from "../core/data/schema";
 import type { DataFile } from "../core/data/url";
 import type { PointAdminAssignment } from "../core/join/admin";
 import type { AdminFillSpec } from "../core/render/admin";
+import type { BasemapVisibility } from "../core/render/basemap";
 import type { Result } from "../core/result";
 import type { ManifestError } from "../core/storage/manifest";
 import type { OverlayLayers } from "../io/deck-layers";
@@ -18,6 +19,8 @@ import type { ManifestChannel, TabsError, WriterLock } from "../io/tabs";
 export type MapView = {
   readonly setAdminFill: (spec: AdminFillSpec) => Result<void, MapError>;
   readonly setOverlayLayers: (layers: OverlayLayers) => Result<void, MapError>;
+  /** 背景地図の鉄道、道路、川の表示を切り替える */
+  readonly setBasemapVisibility: (visibility: BasemapVisibility) => Result<void, MapError>;
   readonly fitBBox: (bbox: BBox) => void;
   /** ポインタの下のものを知らせる（ホバーのカード）。返した関数で知らせるのをやめる */
   readonly watchPointer: (listener: (event: MapPointerEvent) => void) => () => void;
