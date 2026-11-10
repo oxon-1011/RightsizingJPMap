@@ -8,6 +8,7 @@ import {
   type HoverData,
   type HoverHit,
   hoverContent,
+  hoverPopulationIndicator,
   type LayerHoverData,
   MAX_HOVER_ATTRIBUTES,
   meshHoverColumns,
@@ -48,19 +49,41 @@ const meshData = (overrides: Partial<MeshHoverData> = {}): HoverData => ({
     valueRows: indexMeshes(BASE_CODES),
     values: Float32Array.from([0.25, Number.NaN, Number.NaN]),
     baseRows: indexMeshes(BASE_CODES),
-    population: Float32Array.from([120.5, 0, 30]),
+    population: { indicator: "pop", values: Float32Array.from([120.5, 0, 30]), masked: [] },
     masked: [Uint8Array.from([0, 0, 1])],
     ...overrides,
   },
   layers: new Map(),
 });
 
+const joined = (
+  perPopulation: { base: "pop" | "p65"; per: number } | null,
+): IndicatorSelection => ({
+  kind: "joined",
+  datasetId: "d",
+  measure: { kind: "count" },
+  perPopulation,
+});
+
+describe("hoverPopulationIndicator", () => {
+  it("2行目は総人口にし、指標が総人口なら出さない", () => {
+    expect(hoverPopulationIndicator(AGING)).toBe("pop");
+    expect(hoverPopulationIndicator({ kind: "base", id: "p65" })).toBe("pop");
+    expect(hoverPopulationIndicator({ kind: "base", id: "pop" })).toBeNull();
+    expect(hoverPopulationIndicator(joined(null))).toBe("pop");
+    expect(hoverPopulationIndicator(joined({ base: "pop", per: 1000 }))).toBe("pop");
+  });
+
+  it("人口あたりの値の分母が総人口でなければ、その分母の人数にする", () => {
+    expect(hoverPopulationIndicator(joined({ base: "p65", per: 1000 }))).toBe("p65");
+  });
+});
+
 describe("meshHoverColumns", () => {
+  const TOTAL = { indicator: "pop", value: "2050_pop", masked: [] };
+
   it("比の指標では、その年の総人口と秘匿の列を読む", () => {
-    expect(meshHoverColumns(AGING, 2050)).toEqual({
-      population: "2050_pop",
-      masked: ["2050_masked"],
-    });
+    expect(meshHoverColumns(AGING, 2050)).toEqual({ population: TOTAL, masked: ["2050_masked"] });
   });
 
   it("総人口の指標では総人口を2回出さないので、総人口の列を読まない", () => {
@@ -72,7 +95,7 @@ describe("meshHoverColumns", () => {
 
   it("2時点の年齢別の指標では、両方の年の秘匿の列を読む", () => {
     expect(meshHoverColumns({ kind: "base", id: "elderly_change" }, 2050)).toEqual({
-      population: "2050_pop",
+      population: TOTAL,
       masked: ["2050_masked", "2025_masked"],
     });
   });
@@ -81,18 +104,23 @@ describe("meshHoverColumns", () => {
     expect(meshHoverColumns({ kind: "base", id: "pop_change" }, 2070).masked).toEqual([]);
   });
 
-  it("結合した指標では、人口あたりの値の分母の秘匿の列を読む", () => {
-    const joined = (perPopulation: { base: "pop" | "p65"; per: number } | null) =>
-      meshHoverColumns(
-        { kind: "joined", datasetId: "d", measure: { kind: "count" }, perPopulation },
-        2050,
-      );
-    expect(joined(null)).toEqual({ population: "2050_pop", masked: [] });
-    expect(joined({ base: "p65", per: 1000 })).toEqual({
-      population: "2050_pop",
+  it("結合した指標では、人口あたりの値の分母の人数と、その秘匿の列を読む", () => {
+    expect(meshHoverColumns(joined(null), 2050)).toEqual({ population: TOTAL, masked: [] });
+    expect(meshHoverColumns(joined({ base: "p65", per: 1000 }), 2050)).toEqual({
+      population: { indicator: "p65", value: "2050_p65", masked: ["2050_masked"] },
       masked: ["2050_masked"],
     });
-    expect(joined({ base: "pop", per: 1000 }).masked).toEqual([]);
+    expect(meshHoverColumns(joined({ base: "pop", per: 1000 }), 2050)).toEqual({
+      population: TOTAL,
+      masked: [],
+    });
+  });
+
+  it("分母の年齢別の人数がない年（2020 年）には、2行目の列を読まない", () => {
+    expect(meshHoverColumns(joined({ base: "p65", per: 1000 }), 2020)).toEqual({
+      population: null,
+      masked: [],
+    });
   });
 });
 
@@ -105,20 +133,20 @@ describe("hoverContent のメッシュ", () => {
       indicator: AGING,
       datasetName: null,
       value: { kind: "number", value: 0.25 },
-      population: { kind: "number", value: Math.fround(120.5) },
+      population: { indicator: "pop", value: { kind: "number", value: Math.fround(120.5) } },
     });
   });
 
   it("値がなく秘匿の列が立っていれば秘匿、立っていなければ値なしにする", () => {
     expect(hoverContent(meshData(), hitAt(centerOf(52350000)))).toMatchObject({
       value: { kind: "masked" },
-      population: { kind: "number", value: 30 },
+      population: { value: { kind: "number", value: 30 } },
     });
     // 総人口が 0 のメッシュの比は値なし。総人口の 0 を添える
     expect(hoverContent(meshData(), hitAt(SAPPORO))).toMatchObject({
       code: SAPPORO_CODE,
       value: { kind: "none" },
-      population: { kind: "number", value: 0 },
+      population: { value: { kind: "number", value: 0 } },
     });
   });
 
@@ -156,12 +184,33 @@ describe("hoverContent のメッシュ", () => {
       code: 52350001,
       datasetName: "診療所",
       value: { kind: "number", value: 3 },
-      population: { kind: "none" },
+      population: { indicator: "pop", value: { kind: "none" } },
     });
     // 集計していないメッシュは塗っていないので、値なしにする
     expect(hoverContent(data, hitAt(TOKYO))).toMatchObject({
       value: { kind: "none" },
-      population: { kind: "number", value: Math.fround(120.5) },
+      population: { value: { kind: "number", value: Math.fround(120.5) } },
+    });
+  });
+
+  it("人口あたりの値の分母の人数を2行目に出し、秘匿の列が立っていれば秘匿にする", () => {
+    const data = meshData({
+      indicator: joined({ base: "p65", per: 1000 }),
+      datasetName: "診療所",
+      values: Float32Array.from([2.5, Number.NaN, Number.NaN]),
+      population: {
+        indicator: "p65",
+        values: Float32Array.from([40, 0, 0]),
+        masked: [Uint8Array.from([0, 0, 1])],
+      },
+    });
+    expect(hoverContent(data, hitAt(TOKYO))).toMatchObject({
+      value: { kind: "number", value: 2.5 },
+      population: { indicator: "p65", value: { kind: "number", value: 40 } },
+    });
+    expect(hoverContent(data, hitAt(centerOf(52350000)))).toMatchObject({
+      value: { kind: "masked" },
+      population: { indicator: "p65", value: { kind: "masked" } },
     });
   });
 
@@ -195,10 +244,13 @@ const municipalData = (): HoverData => ({
       ["31201", 0.38],
       ["31202", Number.NaN],
     ]),
-    population: new Map([
-      ["31201", 150000],
-      ["31202", 140000],
-    ]),
+    population: {
+      indicator: "pop",
+      values: new Map([
+        ["31201", 150000],
+        ["31202", 140000],
+      ]),
+    },
     names: {
       areas: new Map([
         ["31000", "鳥取県"],
@@ -223,7 +275,7 @@ describe("hoverContent の市区町村", () => {
       indicator: AGING,
       datasetName: null,
       value: { kind: "number", value: 0.38 },
-      population: { kind: "number", value: 150000 },
+      population: { indicator: "pop", value: { kind: "number", value: 150000 } },
     });
   });
 
@@ -232,7 +284,7 @@ describe("hoverContent の市区町村", () => {
     expect(hoverContent(municipalData(), nan)).toMatchObject({
       name: "米子市",
       value: { kind: "none" },
-      population: { kind: "number", value: 140000 },
+      population: { indicator: "pop", value: { kind: "number", value: 140000 } },
     });
   });
 

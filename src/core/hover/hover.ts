@@ -2,7 +2,7 @@
 // ポインタの下にあったもの（io が MapLibre と deck.gl から集める）と、app が持つ塗り分けの値から、
 // カードに出す値を決める。数字の書き方と見出しの文言は ui が決める。
 
-import { meshIndicatorColumns } from "../indicators/definitions";
+import { meshIndicatorColumns, type PopulationIndicatorId } from "../indicators/definitions";
 import type { MunicipalNames } from "../indicators/municipal";
 import type { MeshLookup } from "../join/per-population";
 import { latLonToMeshCode } from "../mesh/mesh-code";
@@ -41,7 +41,8 @@ type ChoroplethPart = {
 
 /**
  * 塗り分けの値をポインタの位置で引くための持ち物。app が塗り分けを地図に渡すたびに作り直す。
- * どれも app が読んで持っている値を指すだけで、カードのために読み直したものではない（総人口と秘匿の列を除く）。
+ * どれも app が読んで持っている値を指すだけで、カードのために読み直したものではない（2行目の人数と秘匿の列を除く）。
+ * population はカードの2行目の人数で、indicator がその人数の指標（hoverPopulationIndicator）。
  */
 export type ChoroplethHoverData =
   | (ChoroplethPart & {
@@ -49,18 +50,25 @@ export type ChoroplethHoverData =
       /** 塗り分けの値の、メッシュコードから値の番号への対応。結合した指標では集計したメッシュだけを持つ */
       readonly valueRows: MeshLookup;
       readonly values: ArrayLike<number>;
-      /** ベースデータの、メッシュコードから行の番号への対応。総人口と秘匿の列はこの行の順 */
+      /** ベースデータの、メッシュコードから行の番号への対応。2行目の人数と秘匿の列はこの行の順 */
       readonly baseRows: MeshLookup;
-      /** その年の総人口。指標が総人口のときは null（同じ値を2回出さない） */
-      readonly population: ArrayLike<number> | null;
+      /** その年の2行目の人数と、それを秘匿にしたかを決める列（年齢別の人数のときだけ） */
+      readonly population: {
+        readonly indicator: PopulationIndicatorId;
+        readonly values: ArrayLike<number>;
+        readonly masked: readonly ArrayLike<number>[];
+      } | null;
       /** 値を秘匿として透明にしたかを決める列（D7）。どれかが 0 でなければ秘匿 */
       readonly masked: readonly ArrayLike<number>[];
     })
   | (ChoroplethPart & {
       readonly unit: "municipality";
       readonly values: ReadonlyMap<string, number>;
-      /** その年の総人口。指標が総人口のときは null */
-      readonly population: ReadonlyMap<string, number> | null;
+      /** その年の2行目の人数 */
+      readonly population: {
+        readonly indicator: PopulationIndicatorId;
+        readonly values: ReadonlyMap<string, number>;
+      } | null;
       readonly names: MunicipalNames;
     });
 
@@ -89,12 +97,18 @@ export type HoverAttribute = {
   readonly value: string | number | boolean | null;
 };
 
+/** カードの2行目の人数。indicator はその人数の指標（総人口か、人口あたりの値の分母） */
+export type HoverPopulation = {
+  readonly indicator: PopulationIndicatorId;
+  readonly value: HoverValue;
+};
+
 export type HoverContent =
   | (ChoroplethPart & {
       readonly kind: "mesh";
       readonly code: number;
       readonly value: HoverValue;
-      readonly population: HoverValue | null;
+      readonly population: HoverPopulation | null;
     })
   | (ChoroplethPart & {
       readonly kind: "municipality";
@@ -102,7 +116,7 @@ export type HoverContent =
       readonly name: string;
       readonly prefecture: string | null;
       readonly value: HoverValue;
-      readonly population: HoverValue | null;
+      readonly population: HoverPopulation | null;
     })
   | {
       readonly kind: "feature";
@@ -123,36 +137,90 @@ const numberValue = (value: number | undefined): HoverValue =>
   value === undefined || Number.isNaN(value) ? NONE : { kind: "number", value };
 
 /**
+ * カードの2行目に出す人数の指標（持ち主の決定、2026-11-10）。
+ * 結合した指標の人口あたりの値で、分母が総人口でなければ、その分母の人数を出す（極端な値の理由が分母の少なさにあるため）。
+ * それ以外は、その年の総人口を出す。指標が総人口なら、同じ値を2回出さないよう null にする。
+ */
+export const hoverPopulationIndicator = (
+  indicator: IndicatorSelection,
+): PopulationIndicatorId | null => {
+  switch (indicator.kind) {
+    case "base":
+      return indicator.id === "pop" ? null : "pop";
+    case "joined":
+      return indicator.perPopulation === null ? "pop" : indicator.perPopulation.base;
+    default: {
+      const unreachable: never = indicator;
+      return unreachable;
+    }
+  }
+};
+
+type ColumnSource = { readonly value: string; readonly masked: string | null };
+
+/** 指標の計算に使う人数の列（総数と年齢別）。選べない年なら空 */
+const sourcesOf = (
+  id: Parameters<typeof meshIndicatorColumns>[0],
+  year: number,
+): readonly ColumnSource[] => {
+  const plan = meshIndicatorColumns(id, year);
+  if (plan === null) {
+    return [];
+  }
+  switch (plan.kind) {
+    case "count":
+      return [plan.value];
+    case "ratio":
+      return [plan.numerator, plan.denominator];
+    case "change":
+      return [plan.current, plan.base];
+    default: {
+      const unreachable: never = plan;
+      return unreachable;
+    }
+  }
+};
+
+const maskedColumnsOf = (sources: readonly ColumnSource[]): readonly string[] => [
+  ...new Set(sources.flatMap((s) => (s.masked === null ? [] : [s.masked]))),
+];
+
+/**
  * メッシュのカードのために、塗り分けの列のほかに読む列。
- * 総人口（指標が総人口なら null）と、値を秘匿として透明にしたかを決める秘匿の列（D7）。
- * 結合した指標の人口あたりの値は、分母の指標の秘匿の列で決まる。選べない年なら列はない。
+ * - population：2行目の人数の列と、それを秘匿にしたかを決める秘匿の列。2行目がないか、選べない年なら null
+ * - masked：値を秘匿として透明にしたかを決める秘匿の列（D7）。結合した指標の人口あたりの値は、分母の指標の秘匿の列で決まる
  */
 export const meshHoverColumns = (
   indicator: IndicatorSelection,
   year: number,
-): { readonly population: string | null; readonly masked: readonly string[] } => {
-  const population = meshIndicatorColumns("pop", year);
-  const populationColumn =
-    population?.kind === "count" && !(indicator.kind === "base" && indicator.id === "pop")
-      ? population.value.value
-      : null;
+): {
+  readonly population: {
+    readonly indicator: PopulationIndicatorId;
+    readonly value: string;
+    readonly masked: readonly string[];
+  } | null;
+  readonly masked: readonly string[];
+} => {
+  const populationIndicator = hoverPopulationIndicator(indicator);
+  const [populationSource] =
+    populationIndicator === null ? [] : sourcesOf(populationIndicator, year);
   const maskedBy =
     indicator.kind === "base"
       ? indicator.id
       : indicator.perPopulation === null
         ? null
         : indicator.perPopulation.base;
-  const plan = maskedBy === null ? null : meshIndicatorColumns(maskedBy, year);
-  const sources =
-    plan === null
-      ? []
-      : plan.kind === "count"
-        ? [plan.value]
-        : plan.kind === "ratio"
-          ? [plan.numerator, plan.denominator]
-          : [plan.current, plan.base];
-  const masked = [...new Set(sources.flatMap((s) => (s.masked === null ? [] : [s.masked])))];
-  return { population: populationColumn, masked };
+  return {
+    population:
+      populationIndicator === null || populationSource === undefined
+        ? null
+        : {
+            indicator: populationIndicator,
+            value: populationSource.value,
+            masked: maskedColumnsOf([populationSource]),
+          },
+    masked: maskedBy === null ? [] : maskedColumnsOf(sourcesOf(maskedBy, year)),
+  };
 };
 
 /** 秘匿の列のどれかが 0 でなければ秘匿。NaN は io の誤りなので、indicators/mesh.ts と同じく値なしとして扱う */
@@ -180,12 +248,19 @@ const meshContent = (
       : baseRow !== undefined && isMaskedAt(data.masked, baseRow)
         ? MASKED
         : NONE;
+  const { population: source } = data;
   const population =
-    data.population === null
+    source === null
       ? null
-      : baseRow === undefined
-        ? NONE
-        : numberValue(data.population[baseRow]);
+      : {
+          indicator: source.indicator,
+          value:
+            baseRow === undefined
+              ? NONE
+              : isMaskedAt(source.masked, baseRow)
+                ? MASKED
+                : numberValue(source.values[baseRow]),
+        };
   return {
     kind: "mesh",
     code,
@@ -216,7 +291,13 @@ const municipalityContent = (
     indicator: data.indicator,
     datasetName: data.datasetName,
     value: numberValue(data.values.get(code)),
-    population: data.population === null ? null : numberValue(data.population.get(code)),
+    population:
+      data.population === null
+        ? null
+        : {
+            indicator: data.population.indicator,
+            value: numberValue(data.population.values.get(code)),
+          },
   };
 };
 

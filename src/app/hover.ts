@@ -9,6 +9,7 @@ import {
   type HoverContent,
   type HoverData,
   hoverContent,
+  hoverPopulationIndicator,
   type LayerHoverData,
   meshHoverColumns,
 } from "../core/hover/hover";
@@ -97,9 +98,12 @@ const meshData = async (
   if (!mesh.ok) {
     return mesh;
   }
-  // 塗り分けに使った列は持ち回っているので、読み直さない。総人口の列だけが新しく読むことがある
+  // 塗り分けに使った列は持ち回っているので、読み直さない。2行目の人数の列だけが新しく読むことがある
   const columns = meshHoverColumns(indicator, year);
-  const names = [...(columns.population === null ? [] : [columns.population]), ...columns.masked];
+  const second = columns.population;
+  const names = [
+    ...new Set([...(second === null ? [] : [second.value, ...second.masked]), ...columns.masked]),
+  ];
   const read = await sources.base.meshColumns(names);
   if (!read.ok) {
     return read;
@@ -115,18 +119,33 @@ const meshData = async (
           message: JSON.stringify(column.error),
         });
   };
-  const population = columns.population === null ? ok(null) : pick(columns.population);
-  if (!population.ok) {
-    return population;
-  }
-  const masked: ArrayLike<number>[] = [];
-  for (const name of columns.masked) {
-    const column = pick(name);
-    if (!column.ok) {
-      return column;
+  const pickAll = (list: readonly string[]): Result<ArrayLike<number>[], AppError> => {
+    const picked: ArrayLike<number>[] = [];
+    for (const name of list) {
+      const column = pick(name);
+      if (!column.ok) {
+        return column;
+      }
+      picked.push(column.value);
     }
-    masked.push(column.value);
+    return ok(picked);
+  };
+  const masked = pickAll(columns.masked);
+  if (!masked.ok) {
+    return masked;
   }
+  const secondValues = second === null ? ok(null) : pick(second.value);
+  if (!secondValues.ok) {
+    return secondValues;
+  }
+  const secondMasked = pickAll(second?.masked ?? []);
+  if (!secondMasked.ok) {
+    return secondMasked;
+  }
+  const population =
+    second === null || secondValues.value === null
+      ? null
+      : { indicator: second.indicator, values: secondValues.value, masked: secondMasked.value };
   return ok({
     unit: "mesh",
     year,
@@ -135,8 +154,8 @@ const meshData = async (
     valueRows: rowsOf(choropleth.codes, mesh.value),
     values: choropleth.values,
     baseRows: mesh.value.lookup,
-    population: population.value,
-    masked,
+    population,
+    masked: masked.value,
   });
 };
 
@@ -151,24 +170,29 @@ const municipalData = async (
   if (!municipal.ok) {
     return municipal;
   }
-  const population =
-    indicator.kind === "base" && indicator.id === "pop"
+  const secondIndicator = hoverPopulationIndicator(indicator);
+  const second =
+    secondIndicator === null
       ? ok(null)
-      : computeMunicipalIndicator(municipal.value.table, "pop", year);
-  if (!population.ok) {
+      : computeMunicipalIndicator(municipal.value.table, secondIndicator, year);
+  if (!second.ok) {
     return err({
       kind: "base-data",
       file: "municipal_indicators.parquet",
-      message: JSON.stringify(population.error),
+      message: JSON.stringify(second.error),
     });
   }
+  const population =
+    secondIndicator === null || second.value === null
+      ? null
+      : { indicator: secondIndicator, values: second.value };
   return ok({
     unit: "municipality",
     year,
     indicator,
     datasetName,
     values: choropleth.values,
-    population: population.value,
+    population,
     names: municipal.value.names,
   });
 };

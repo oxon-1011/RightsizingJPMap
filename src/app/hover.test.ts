@@ -73,7 +73,7 @@ describe("ホバーのカード", () => {
       year: 2050,
       indicator: { kind: "base", id: "aging_rate" },
       value: { kind: "number" },
-      population: { kind: "number" },
+      population: { indicator: "pop", value: { kind: "number" } },
     });
     map.pointer({ kind: "leave" });
     expect(card()).toBeNull();
@@ -88,7 +88,7 @@ describe("ホバーのカード", () => {
     expect(card()?.content).toMatchObject({
       code: EMPTY_2050,
       value: { kind: "none" },
-      population: { kind: "number", value: 0 },
+      population: { value: { kind: "number", value: 0 } },
     });
   });
 
@@ -123,7 +123,7 @@ describe("ホバーのカード", () => {
       name: "鳥取市",
       prefecture: "鳥取県",
       value: { kind: "number" },
-      population: { kind: "number" },
+      population: { indicator: "pop", value: { kind: "number" } },
     });
   });
 
@@ -171,7 +171,27 @@ describe("ホバーのカード", () => {
       kind: "mesh",
       datasetName: dataset?.name,
       value: { kind: "number", value: 1 },
-      population: { kind: "number" },
+      population: { indicator: "pop", value: { kind: "number" } },
+    });
+
+    // 65 歳以上人口 1,000 人あたりにすると、2行目は 65 歳以上人口になる
+    app.dispatch({
+      type: "indicator-selected",
+      indicator: { ...count, perPopulation: { base: "p65", per: 1000 } },
+    });
+    await settle();
+    expect(card()?.content).toMatchObject({
+      value: { kind: "number" },
+      population: { indicator: "p65", value: { kind: "number" } },
+    });
+    // 市区町村でも同じ
+    app.dispatch({ type: "unit-selected", unit: "municipality" });
+    await settle();
+    map.pointer(hover(TOTTORI_STATION, { municipalityCode: "31201" }));
+    await settle();
+    expect(card()?.content).toMatchObject({
+      kind: "municipality",
+      population: { indicator: "p65", value: { kind: "number" } },
     });
   });
 

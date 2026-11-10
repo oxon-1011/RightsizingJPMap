@@ -15,19 +15,19 @@ const mesh = (overrides: Partial<Extract<HoverContent, { kind: "mesh" }>> = {}):
   indicator: { kind: "base", id: "aging_rate" },
   datasetName: null,
   value: { kind: "number", value: 0.48234 },
-  population: { kind: "number", value: 1234.56 },
+  population: { indicator: "pop", value: { kind: "number", value: 1234.56 } },
   ...overrides,
 });
 
 describe("hoverCardText のメッシュと市区町村", () => {
-  it("見出しはメッシュコードと年、行は指標と総人口にし、値は凡例と同じ書き方にする", () => {
+  it("見出しはメッシュコードと年、行は指標と総人口にする。指標は凡例と同じ書き方、総人口は整数で全部の桁を出す", () => {
     expect(hoverCardText(mesh())).toEqual({
       title: "53394611",
       titlePrefix: null,
       year: "2050年",
       rows: [
         { label: "高齢化率", note: null, value: "48.2%" },
-        { label: "総人口", note: null, value: "1,230 人" },
+        { label: "総人口", note: null, value: "1,235 人" },
       ],
       more: null,
     });
@@ -44,20 +44,27 @@ describe("hoverCardText のメッシュと市区町村", () => {
   });
 
   it("秘匿は「秘匿」、値なしは凡例と同じ「なし」にする", () => {
-    const text = hoverCardText(mesh({ value: { kind: "masked" }, population: { kind: "none" } }));
+    const text = hoverCardText(
+      mesh({
+        value: { kind: "masked" },
+        population: { indicator: "pop", value: { kind: "none" } },
+      }),
+    );
     expect(text.rows.map((r) => r.value)).toEqual(["秘匿", "なし"]);
     expect(hoverCardText(mesh({ value: { kind: "none" } })).rows[0]?.value).toBe("なし");
   });
 
-  it("総人口の指標では、総人口の行を1つだけにする", () => {
-    const text = hoverCardText(
-      mesh({
-        indicator: { kind: "base", id: "pop" },
-        value: { kind: "number", value: 0.4 },
-        population: null,
-      }),
-    );
-    expect(text.rows).toEqual([{ label: "総人口", note: null, value: "0.4 人" }]);
+  it("総人口の指標では、総人口の行を1つだけにし、2行目と同じく整数で書く", () => {
+    const text = (value: number) =>
+      hoverCardText(
+        mesh({
+          indicator: { kind: "base", id: "pop" },
+          value: { kind: "number", value },
+          population: null,
+        }),
+      ).rows;
+    expect(text(0.4)).toEqual([{ label: "総人口", note: null, value: "0 人" }]);
+    expect(text(1283.5)).toEqual([{ label: "総人口", note: null, value: "1,284 人" }]);
   });
 
   it("市区町村は、都道府県を添えた区域の名前を見出しにする", () => {
@@ -70,10 +77,11 @@ describe("hoverCardText のメッシュと市区町村", () => {
       indicator: { kind: "base", id: "p65" },
       datasetName: null,
       value: { kind: "number", value: 60000 },
-      population: { kind: "number", value: 176543 },
+      population: { indicator: "pop", value: { kind: "number", value: 60000 } },
     });
     expect(text).toMatchObject({ title: "鳥取市", titlePrefix: "鳥取県", year: "2030年" });
-    expect(text.rows.map((r) => r.value)).toEqual(["6万 人", "176,543 人"]);
+    // 年齢別の人数の指標は凡例と同じ書き方（「万」）、2行目の総人口は「万」を使わない
+    expect(text.rows.map((r) => r.value)).toEqual(["6万 人", "60,000 人"]);
   });
 
   it("結合した指標は、データの名前と件数か合計にし、人口あたりの分母を添える", () => {
@@ -87,13 +95,18 @@ describe("hoverCardText のメッシュと市区町村", () => {
         },
         datasetName: "診療所",
         value: { kind: "number", value: 2.3456 },
+        population: { indicator: "p65", value: { kind: "number", value: 21234.4 } },
       }),
     );
-    expect(count.rows[0]).toEqual({
-      label: "診療所 件数",
-      note: "65歳以上人口 1,000 人あたり",
-      value: "2.35",
-    });
+    // 分母が総人口でなければ、2行目は分母の人数にする
+    expect(count.rows).toEqual([
+      { label: "診療所 件数", note: "65歳以上人口 1,000 人あたり", value: "2.35" },
+      { label: "65歳以上人口", note: null, value: "21,234 人" },
+    ]);
+    const masked = hoverCardText(
+      mesh({ population: { indicator: "p65", value: { kind: "masked" } } }),
+    );
+    expect(masked.rows[1]).toEqual({ label: "65歳以上人口", note: null, value: "秘匿" });
     const sum = hoverCardText(
       mesh({
         indicator: {
