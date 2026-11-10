@@ -70,7 +70,7 @@ const formatRejectionText = ({ extension }: FormatRejection): string =>
     : `拡張子が .${extension} のファイルは取り込めません。CSV、Parquet、GeoJSON のファイルにしてください。`;
 
 const READ_TEXT: Readonly<Record<SourceFormat, string>> = {
-  csv: "CSV として読めませんでした。文字コードが UTF-8 かを確かめてください。",
+  csv: "CSV として読めませんでした。",
   parquet: "Parquet として読めませんでした。",
   geojson: "JSON として読めませんでした。",
 };
