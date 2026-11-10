@@ -145,6 +145,25 @@ describe("overlayDeckLayers", () => {
   });
 });
 
+describe("picking の対象", () => {
+  it("自前データの点、線、面だけを picking の対象にし、メッシュは対象にしない", () => {
+    const style = { color: "#1d4ed8", size: 4, visible: true };
+    const layers = overlayDeckLayers(
+      {
+        mesh: meshSpec([0.25, 0.55], "a"),
+        points: [pointLayerSpec("p", [35], [139], style)],
+        geoJsons: [{ spec: geoJsonLayerSpec("g", "line", style), data: polygon }],
+      },
+      "road",
+    );
+    expect(layers.map((l) => [l.id, l.props.pickable])).toEqual([
+      ["mesh", false],
+      ["g", true],
+      ["p", true],
+    ]);
+  });
+});
+
 describe("parseOverlayGeoJson", () => {
   it("JSON として読めなければ失敗を返す", () => {
     const result = parseOverlayGeoJson(new TextEncoder().encode("{"));
