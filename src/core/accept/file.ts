@@ -24,8 +24,11 @@ export const detectFormat = (fileName: string): Result<SourceFormat, FormatRejec
   return format === undefined ? err({ stage: "format", extension }) : ok(format);
 };
 
-/** 警告を出すファイルの大きさ（バイト）。TODO: 実装時に調整する（docs/design/user-data.md） */
-export const LARGE_FILE_BYTES = 100 * 1024 * 1024;
+/**
+ * 警告を出すファイルの大きさ（バイト）。
+ * 点の CSV で、24MB の取り込みに約 6 秒、105MB に約 70 秒かかった（2026-11-10）。待ちが目立つ大きさとして 50MB にする。
+ */
+export const LARGE_FILE_BYTES = 50 * 1024 * 1024;
 
 export const isLargeFile = (bytes: number): boolean => bytes > LARGE_FILE_BYTES;
 
