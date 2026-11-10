@@ -123,11 +123,11 @@ setOverlayLayers(map, {
 - **update-failed**：レイヤーを足すときや更新するときに、MapLibre か deck.gl が例外を投げた。`setAdminFill` と `setOverlayLayers` もこれを返す。
 
 地図は下から次の順に重なる。
-メッシュを塗っているときも、道路、境界線、地名がメッシュの上に見える。
+メッシュを塗っているときも、川、道路、鉄道、境界線、地名がメッシュの上に見える。
 
-1. 背景地図の海、陸、湖と川
+1. 背景地図の海と陸
 2. 行政区域の塗り（`rjm-admin-pref-fill`、`rjm-admin-muni-fill`）と、deck.gl のメッシュ
-3. 背景地図の主な道路
+3. 背景地図の川と湖、主な道路、鉄道
 4. 行政区域の境界線（`rjm-admin-muni-line` は z6 から、`rjm-admin-pref-line` は全ズーム）
 5. 背景地図の地名
 6. 自前データの線と面、点（deck.gl）
@@ -202,7 +202,7 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 地図には触らず、`setOverlayLayers` がここを呼ぶ。
 
 - **メッシュ**：`SolidPolygonLayer` に、`src/core/mesh/geometry.ts` のバイナリ形式（`_normalize: false`、三角形の頂点の番号つき）で渡す。色は頂点ごとの RGBA を `getFillColor` のバイナリとして渡す。`dataComparator` で同じ `MeshGeometry` から作った data を同じとみなし、形の作り直しを止める。
-- **点**：`ScatterplotLayer` に、座標をバイナリ形式で渡す。半径はピクセルで指定する。
+- **点**：`ScatterplotLayer` に、座標をバイナリ形式で渡す。半径はピクセルで指定し、濃い塗りの上でも見えるよう White の 1.5px の縁取りを付ける。
 - **線と面**：`GeoJsonLayer` に渡す。面は `GeoJsonLayerSpec.fillColor`（半透明）で塗り、枠を描く。
 
 点、線、面は、ホバーのカードのために `pickable` にする。
@@ -221,15 +221,24 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 |---|---|---|
 | `background` | なし | z8 未満は海（DADS の SolidGray/100）、z8 からは陸（White） |
 | `land` | `AdmArea` | z8 未満の陸（White） |
-| `water` | `WA` | 海、湖、川（SolidGray/100） |
-| `road` | `RdCL` | `vt_rdctg` が高速自動車国道等、国道、主要道路のもの |
+| `water` | `WA` | 海、湖、川（SolidGray/100）。川と湖は `river` が上から塗り直す |
+| `river` | `WA` | 海（`vt_code` 5100、5101）以外の水域（Cyan/300）。塗りとメッシュの上に描く |
+| `road` | `RdCL` | `vt_rdctg` が高速自動車国道等、国道、主要道路のもの（SolidGray/420） |
+| `rail-tunnel` | `RailCL` | 鉄道のトンネルと地下の区間（SolidGray/500 の破線） |
+| `rail`、`rail-dash` | `RailCL` | 鉄道の地上の区間（SolidGray/800 の線に White の破線） |
 | `label-place` | `Anno` | 市区町村の名前（`vt_code` が 1301〜1303、1401〜1403、110 の点） |
+
+鉄道は、`vt_rtcode` が新幹線、主要鉄道、JR、JR以外、地下鉄、路面のものを描き、索道、側線、特殊鉄道は描かない。
+川の線（`RvrCL`）は描かない。
+街の川は `WA` の面として入っていて、`RvrCL` に入っているのは山の沢、用水路、暗渠と推すものだからである（段階 7.5、2026-11-10）。
 
 タイルの中身はズームによって違う。
 開発サーバーで `querySourceFeatures` を使って確かめた（2026-11-09）。
 
 - **陸と海**：`AdmArea`（陸の面）は z4〜7 にだけあり、z8 からは `WA` に海（`vt_code` 5101）が入る。そのため z8 で背景の色を海から陸に切り替える。地理院の標準地図のスタイル（`gsi-cyberjapan/optimal_bvmap` の `style/std.json`）も同じ切り替え方をしている。
 - **道路**：z4〜5 は高速自動車国道等だけ、z6〜7 は主要道路が加わり、z8 からは国道と都道府県道が入る。
+- **鉄道**：z4〜5 は新幹線だけ、z6〜7 は新幹線と主要鉄道、z8 は JR だけ（新幹線も含む）、z9 から JR以外、z11 から地下鉄と路面が加わる。トンネルと地下の区間は `vt_railstate` で見分ける（`トンネル ` のように末尾に空白がある値もある）。
+- **水域**：海の `vt_code` は z13 までは 5101、z14 からは 5100 である。川の面は z10 にはあり、z8 にはない（z9 は確かめていない）。
 - **地名**：z4〜7 は人口の規模で分けた市の名前（1301〜1303）、z8〜10 は都道府県庁、市役所、町村役場の位置の名前（1401〜1403）、z11 からは市区町村の名前（110）が入る。
 
 地理院のタイルの行政界（`AdmBdry`）は描かない。
@@ -243,7 +252,7 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 `metadata` の `rjm:insertBefore` に、行政区域とメッシュを差し込む位置を書く。
 
 ```json
-"metadata": { "rjm:insertBefore": { "choropleth": "road", "boundary": "label-place" } }
+"metadata": { "rjm:insertBefore": { "choropleth": "river", "boundary": "label-place" } }
 ```
 
 `choropleth` のレイヤーの直前に行政区域の塗りと deck.gl のメッシュを、`boundary` のレイヤーの直前に行政区域の境界線を差し込む。

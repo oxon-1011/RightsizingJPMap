@@ -97,10 +97,11 @@ describe("CLASSIFICATIONS", () => {
       );
       expect(new Set(ages.map((b) => b.join())).size).toBe(1);
     }
-    expect(classificationOf("pop", "mesh").breaks).toEqual([10, 30, 100, 300, 1000]);
+    expect(classificationOf("pop", "mesh").breaks).toEqual([10, 30, 100, 300, 1000, 3000]);
     expect(classificationOf("pop", "municipality").breaks).toEqual([
-      3000, 10000, 30000, 100000, 300000,
+      1000, 3000, 10000, 30000, 100000, 300000,
     ]);
+    expect(classificationOf("pop", "mesh").colors).toHaveLength(7);
   });
 });
 
