@@ -2,7 +2,12 @@
   "version": 8,
   "name": "RightsizingJPMap の背景地図（国土地理院最適化ベクトルタイル）",
   "metadata": {
-    "rjm:insertBefore": { "choropleth": "river", "boundary": "label-place" }
+    "rjm:insertBefore": { "choropleth": "river", "boundary": "label-place" },
+    "rjm:layerGroups": {
+      "rail": ["rail-tunnel", "rail", "rail-dash"],
+      "road": ["road"],
+      "river": ["river"]
+    }
   },
   "sources": {
     "gsi": {

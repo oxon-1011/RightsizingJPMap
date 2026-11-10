@@ -13,7 +13,7 @@ hyparquet、DuckDB-WASM、OPFS、Web Locks、MapLibre、deck.gl の呼び出し�
 | `duckdb.ts` | DuckDB-WASM | `startDuckDb`、`stopDuckDb`、`registerFile`、`dropFile`、`query`、`readFileBytes`、`loadSpatial` |
 | `opfs.ts` | OPFS、`navigator.storage` | `openStorage`、`openMemoryStorage`、`requestPersistence`、`isPersisted` |
 | `tabs.ts` | Web Locks、BroadcastChannel | `acquireWriterLock`、`openManifestChannel` |
-| `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`fitBBox`、`watchPointer` |
+| `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`setBasemapVisibility`、`fitBBox`、`watchPointer` |
 | `deck-layers.ts` | deck.gl のレイヤー | `parseOverlayGeoJson`（レイヤーの組み立ては `setOverlayLayers` が呼ぶ） |
 | `bytes.ts` | `fetch`、`Blob.arrayBuffer` | `fetchBytes`、`readBlobBytes` |
 
@@ -88,7 +88,7 @@ React に依存しないので、app の手続きから呼ぶ。
 ```ts
 import { adminFillSpec } from "../core/render/admin";
 import { meshLayerSpec } from "../core/render/mesh";
-import { BASEMAP_STYLE_FILE, setAdminFill, setOverlayLayers, startMap } from "../io/map";
+import { BASEMAP_STYLE_FILE, setAdminFill, setBasemapVisibility, setOverlayLayers, startMap } from "../io/map";
 
 const started = await startMap({
   container,                                                   // 大きさは呼び出し側の CSS で決める
@@ -111,6 +111,9 @@ setOverlayLayers(map, {
   points,
   geoJsons,
 });
+
+// 背景地図の鉄道を隠す。単位（rail、road、river）は core の BASEMAP_LAYER_GROUPS
+setBasemapVisibility(map, { rail: false, road: true, river: true });
 ```
 
 `startMap` は、背景地図のスタイルを読み、行政区域のレイヤー、deck.gl、出典の表示を足したところで返す。
@@ -119,7 +122,7 @@ setOverlayLayers(map, {
 
 - **create-failed**：WebGL2 が使えないなど、MapLibre の地図を作れなかった。
 - **style-failed**：背景地図のスタイルを読めなかった。
-- **style-contract**：スタイルの `metadata` に差し込む位置がないか、そのレイヤーがない（「背景地図のスタイル」を参照）。
+- **style-contract**：スタイルの `metadata` に、差し込む位置か、表示を切り替える単位のレイヤーの ID がないか、そのレイヤーがスタイルにない（「背景地図のスタイル」を参照）。
 - **update-failed**：レイヤーを足すときや更新するときに、MapLibre か deck.gl が例外を投げた。`setAdminFill` と `setOverlayLayers` もこれを返す。
 
 地図は下から次の順に重なる。
@@ -143,6 +146,11 @@ setOverlayLayers(map, {
 `MeshGeometry` を作り直すと、形ごと作り直しになる。
 自前データの点は、同じ座標の配列（`PointLayerSpec.positions`）なら座標を転送し直さない。
 線と面の GeoJSON は `parseOverlayGeoJson` で一度だけ読み、同じ値を渡し続ける。
+
+`setBasemapVisibility` は、背景地図の鉄道、道路、川の表示を切り替える。
+単位ごとのレイヤーの ID は、`startMap` がスタイルの `metadata` から読んだもの（`MapHandle.basemapLayers`）を使う。
+変えるのは layout の `visibility` だけで、タイルは読み直さない。
+川（`river`）は塗りを差し込む位置（`choropleth`）でもあるが、隠しても重なりの順は変わらず、メッシュと行政区域の塗りは描かれる（`map.browser.test.ts` で確かめている）。
 
 `fitBBox` は、範囲が収まるように地図を動かす（場所への移動、D21）。
 
@@ -256,7 +264,21 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 ```
 
 `choropleth` のレイヤーの直前に行政区域の塗りと deck.gl のメッシュを、`boundary` のレイヤーの直前に行政区域の境界線を差し込む。
-スタイルを差し替える（たとえば Protomaps にする）ときは、この2つの位置を書けば、`map.ts` を変えずに済む。
+
+`metadata` の `rjm:layerGroups` には、画面で表示を切り替える単位ごとに、まとめて切り替えるレイヤーの ID を書く。
+
+```json
+"rjm:layerGroups": {
+  "rail": ["rail-tunnel", "rail", "rail-dash"],
+  "road": ["road"],
+  "river": ["river"]
+}
+```
+
+単位は core の `BASEMAP_LAYER_GROUPS`（`rail`、`road`、`river`）で、3つとも書く。
+書き方は core の `parseBasemapLayerIds` が、レイヤーがスタイルにあるかは `startMap` が確かめ、満たさなければ `style-contract` を返す。
+
+スタイルを差し替える（たとえば Protomaps にする）ときは、`rjm:insertBefore` の2つの位置と `rjm:layerGroups` を書けば、`map.ts` と画面を変えずに済む。
 
 ## CSV の結合用の列を文字列で読む方法
 
@@ -287,6 +309,7 @@ spatial 拡張のテストは extensions.duckdb.org から拡張を取得する�
 手元の macOS では通った（2026-11-09）。
 Playwright（1.65.0）は Chromium に `--enable-unsafe-swiftshader` を渡すので、GPU のない CI でもソフトウェアで描けるはずだが、CI ではまだ確かめていない。
 ネットワークを使わないよう、背景地図は背景色だけのスタイルを Blob の URL で渡す。
+川、道路、鉄道は描かない背景のレイヤーで代え、表示の切り替えは layout の `visibility` と、描かれた画素の色で確かめる。
 admin.pmtiles は置かないので、そのタイルの取得の失敗がログに出るが、feature-state の読み書きは確かめられる。
 メッシュは、描かれた画素の色を読んで、色の差し替えが画面に届くことを確かめる。
 `watchPointer` は、地図のキャンバスに pointermove（deck.gl が聞く）と mousemove（MapLibre が聞く）の両方を送って確かめる。

@@ -14,6 +14,7 @@ import {
   type MapHandle,
   type MapPointerEvent,
   setAdminFill,
+  setBasemapVisibility,
   setOverlayLayers,
   startMap,
   stopMap,
@@ -21,24 +22,42 @@ import {
 } from "./map";
 
 // ネットワークに頼らないよう、背景地図は背景色だけのスタイルにする。
-// choropleth と boundary の位置は、描かない背景のレイヤーで示す。
+// choropleth と boundary の位置と、表示を切り替えるレイヤー（川、道路、鉄道）は、描かない背景のレイヤーで示す。
 // admin.pmtiles は置いていないので、タイルの取得は失敗する（MapLibre がコンソールに出す）。
 // feature-state はタイルがなくても読み書きできるので、塗りの検査には差し支えない。
 
 const SEA: readonly [number, number, number, number] = [230, 230, 230, 255];
 
-const baseStyle = (metadata: unknown) => ({
-  version: 8,
-  metadata,
-  sources: {},
-  layers: [
-    { id: "background", type: "background", paint: { "background-color": "rgb(230,230,230)" } },
-    { id: "road", type: "background", paint: { "background-opacity": 0 } },
-    { id: "label", type: "background", paint: { "background-opacity": 0 } },
-  ],
-});
+/** 描かない背景のレイヤー。railColor を渡すと、rail をその色で塗る */
+const baseStyle = (metadata: unknown, railColor?: string) => {
+  const hidden = (id: string) => ({
+    id,
+    type: "background",
+    paint: { "background-opacity": 0 },
+  });
+  return {
+    version: 8,
+    metadata,
+    sources: {},
+    layers: [
+      { id: "background", type: "background", paint: { "background-color": "rgb(230,230,230)" } },
+      hidden("river"),
+      hidden("road"),
+      railColor === undefined
+        ? hidden("rail")
+        : { id: "rail", type: "background", paint: { "background-color": railColor } },
+      hidden("rail-dash"),
+      hidden("label"),
+    ],
+  };
+};
 
-const VALID_METADATA = { "rjm:insertBefore": { choropleth: "road", boundary: "label" } };
+const LAYER_GROUPS = { rail: ["rail", "rail-dash"], road: ["road"], river: ["river"] };
+
+const VALID_METADATA = {
+  "rjm:insertBefore": { choropleth: "river", boundary: "label" },
+  "rjm:layerGroups": LAYER_GROUPS,
+};
 
 const urls: string[] = [];
 
@@ -142,7 +161,10 @@ describe("startMap", () => {
       "background",
       ADMIN_LAYER_IDS.prefectureFill,
       ADMIN_LAYER_IDS.municipalityFill,
+      "river",
       "road",
+      "rail",
+      "rail-dash",
       ADMIN_LAYER_IDS.municipalityLine,
       ADMIN_LAYER_IDS.prefectureLine,
       "label",
@@ -176,11 +198,38 @@ describe("startMap", () => {
 
   it("差し込む位置のレイヤーがスタイルになければ style-contract を返す", async () => {
     const result = await start(
-      baseStyle({ "rjm:insertBefore": { choropleth: "road", boundary: "no-such-layer" } }),
+      baseStyle({
+        ...VALID_METADATA,
+        "rjm:insertBefore": { choropleth: "road", boundary: "no-such-layer" },
+      }),
     );
     expect(result.ok ? null : result.error).toMatchObject({
       kind: "style-contract",
       message: expect.stringContaining("no-such-layer"),
+    });
+  });
+
+  it("metadata に表示を切り替える単位がなければ style-contract を返し、地図を片付ける", async () => {
+    const result = await start(
+      baseStyle({ "rjm:insertBefore": VALID_METADATA["rjm:insertBefore"] }),
+    );
+    expect(result.ok ? null : result.error).toMatchObject({
+      kind: "style-contract",
+      message: expect.stringContaining("rjm:layerGroups"),
+    });
+    expect(container.querySelector("canvas")).toBeNull();
+  });
+
+  it("表示を切り替える単位のレイヤーがスタイルになければ style-contract を返す", async () => {
+    const result = await start(
+      baseStyle({
+        ...VALID_METADATA,
+        "rjm:layerGroups": { ...LAYER_GROUPS, rail: ["rail", "no-such-rail"] },
+      }),
+    );
+    expect(result.ok ? null : result.error).toMatchObject({
+      kind: "style-contract",
+      message: expect.stringContaining("no-such-rail"),
     });
   });
 
@@ -244,14 +293,63 @@ describe("setOverlayLayers", () => {
 
     show(0.25, "low");
     expect(await waitForPixel(h.map, meshCenter, DADS_ORANGE_6[0] ?? [])).toEqual(DADS_ORANGE_6[0]);
-    // deck.gl のレイヤーは、choropleth の位置（road の直前）に入る
-    expect(h.map.getLayer("deck-layer-group-before:road")).toBeDefined();
+    // deck.gl のレイヤーは、choropleth の位置（river の直前）に入る
+    expect(h.map.getLayer("deck-layer-group-before:river")).toBeDefined();
 
     show(0.8, "high");
     expect(await waitForPixel(h.map, meshCenter, DADS_ORANGE_6[5] ?? [])).toEqual(DADS_ORANGE_6[5]);
 
     show(Number.NaN, "none");
     expect(await waitForPixel(h.map, meshCenter, SEA)).toEqual(SEA);
+  });
+});
+
+describe("setBasemapVisibility", () => {
+  it("単位ごとに、そのレイヤーの layout の visibility を切り替える。鉄道はまとめて切り替える", async () => {
+    const h = unwrap(await start(baseStyle(VALID_METADATA)));
+    handle = h;
+    const visibility = (id: string) => h.map.getLayoutProperty(id, "visibility");
+    unwrap(setBasemapVisibility(h, { rail: false, road: true, river: false }));
+    expect(["rail", "rail-dash", "road", "river"].map(visibility)).toEqual([
+      "none",
+      "none",
+      "visible",
+      "none",
+    ]);
+    unwrap(setBasemapVisibility(h, { rail: true, road: false, river: true }));
+    expect(["rail", "rail-dash", "road", "river"].map(visibility)).toEqual([
+      "visible",
+      "visible",
+      "none",
+      "visible",
+    ]);
+    // ほかのレイヤーには触らない
+    expect(visibility("label")).not.toBe("none");
+  });
+
+  it("隠したレイヤーは描かれず、塗りを差し込む位置の川を隠しても、メッシュは同じ位置に描かれる", async () => {
+    const RAIL = [10, 20, 30, 255];
+    const h = unwrap(await start(baseStyle(VALID_METADATA, "rgb(10,20,30)")));
+    handle = h;
+    unwrap(
+      setOverlayLayers(h, {
+        mesh: meshLayerSpec({
+          id: "mesh",
+          geometry: buildMeshGeometry([MESH]),
+          values: [0.25],
+          classification: classificationOf("aging_rate", "mesh"),
+          colorKey: "low",
+          visible: true,
+        }),
+        points: [],
+        geoJsons: [],
+      }),
+    );
+    // 鉄道（不透明の背景）がメッシュを覆う
+    expect(await waitForPixel(h.map, meshCenter, RAIL)).toEqual(RAIL);
+    unwrap(setBasemapVisibility(h, { rail: false, road: true, river: false }));
+    expect(await waitForPixel(h.map, meshCenter, DADS_ORANGE_6[0] ?? [])).toEqual(DADS_ORANGE_6[0]);
+    expect(h.map.getLayer("deck-layer-group-before:river")).toBeDefined();
   });
 });
 
