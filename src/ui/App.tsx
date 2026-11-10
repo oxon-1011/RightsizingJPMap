@@ -1,98 +1,56 @@
-// 仮の配置。地図の代わりの灰色の背景の上に、部品を見本の値で並べる（段階 6）。
-// Figma の画面 01〜04 と見比べるため、URL の ?screen=02 などで画面を選べる。
-// 状態は core の reduce を useReducer で回すだけにし、段階 5 で Zustand のストアに、段階 7 で地図との結線に置き換える。
-// 公開したサイトから生成物（data/<版>/）を配るので、仮の画面にも出典と加工の表示を置く（docs/user/attribution.md）。
+// 画面の配置。地図を画面全体に広げ、部品を地図の上に重ねる（docs/design/ui.md の「画面の構成」）。
+// 状態は app のストアから読み、利用者の操作は app の手続きに渡す（src/app/README.md の「段階 7 での使い方」）。
+// 出典は地図の右下の AttributionControl が出す（src/io/map.ts）。
 
-import { useEffect, useReducer, useState } from "react";
-import { detectFormat, isLargeFile } from "../core/accept/file";
-import type { Place } from "../core/data/schema";
-import { buildPlaceIndex, searchPlaces } from "../core/places/search";
-import { type Action, reduce, selectableYears } from "../core/state/state";
+import { useEffect, useState } from "react";
+import { app, useAppStore } from "../app/instance";
+import { ACCEPTANCE_URL } from "../app/links";
+import { searchPlaces } from "../core/places/search";
+import { selectableYears } from "../core/state/state";
 import { AddDataButton } from "./AddDataButton";
 import { DropOverlay } from "./DropOverlay";
-import { Link } from "./dads/Link";
 import { hasFiles, nextDragDepth } from "./file-drag";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { isMacPlatform, isPlaceSearchShortcut } from "./keyboard";
 import { LayerPanel } from "./LayerPanel";
 import { NoticeList } from "./NoticeList";
 import { PlaceSearch } from "./PlaceSearch";
-import {
-  parseSampleScreen,
-  SAMPLE_JOINED_CLASSIFICATION,
-  SAMPLE_PLACES,
-  sampleState,
-} from "./samples";
 import { YearSlider } from "./YearSlider";
 import { trackYears } from "./year-slider";
-
-const SOURCES = [
-  {
-    title: "国土数値情報（1kmメッシュ別将来推計人口（R6国政局推計））",
-    owner: "国土交通省",
-    url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-mesh1000r6.html",
-  },
-  {
-    title: "国土数値情報（行政区域データ）",
-    owner: "国土交通省",
-    url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-2024.html",
-  },
-  {
-    title: "日本の地域別将来推計人口（令和5年推計）",
-    owner: "国立社会保障・人口問題研究所",
-    url: "https://www.ipss.go.jp/pp-shicyoson/j/shicyoson23/t-page.asp",
-  },
-] as const;
-
-/** 受け入れ条件の文書。docs/user/ は Git で管理し、GitHub 上のページを指す（2026-11-09 に決めた） */
-const ACCEPTANCE_URL =
-  "https://github.com/oxon-1011/RightsizingJPMap/blob/main/docs/user/acceptance.md";
-
-const PLACE_INDEX = buildPlaceIndex(SAMPLE_PLACES);
 
 type SearchState = { readonly open: boolean; readonly query: string; readonly activeIndex: number };
 
 const CLOSED_SEARCH: SearchState = { open: false, query: "", activeIndex: -1 };
 
-/**
- * 選んだかドロップしたファイルの扱い。取り込みは段階 5 で app に書くので、ここでは拡張子と大きさだけを見て通知する。
- */
-const handleFiles = (dispatch: (action: Action) => void, files: readonly File[]): void => {
-  for (const file of files) {
-    const format = detectFormat(file.name);
-    if (!format.ok) {
-      dispatch({
-        type: "notified",
-        notice: { kind: "import-rejected", fileName: file.name, rejection: format.error },
-      });
-    } else if (isLargeFile(file.size)) {
-      dispatch({
-        type: "notified",
-        notice: { kind: "large-file", fileName: file.name, bytes: file.size },
-      });
-    }
-  }
-};
-
 const dataTransferTypes = (e: DragEvent): readonly string[] =>
   Array.from(e.dataTransfer?.types ?? []);
 
+/**
+ * 地図の要素の ref。描くたびに新しい関数を渡すと地図を作り直すので、部品の外に置く。
+ * React 19 の ref の後片付けで、StrictMode の2回のつなぎ直しにも対応する。
+ */
+const attachMapElement = (el: HTMLDivElement | null): (() => void) | undefined => {
+  if (el === null) {
+    return undefined;
+  }
+  void app.attachMap(el);
+  return () => app.detachMap();
+};
+
 export const App = () => {
-  const [screen] = useState(() =>
-    parseSampleScreen(new URLSearchParams(window.location.search).get("screen")),
-  );
-  const [state, dispatch] = useReducer(reduce, screen, sampleState);
+  const state = useAppStore((s) => s.state);
+  const runtime = useAppStore((s) => s.runtime);
   const [dragDepth, setDragDepth] = useState(0);
   const [search, setSearch] = useState<SearchState>(CLOSED_SEARCH);
-  const [movedTo, setMovedTo] = useState<Place | null>(null);
 
-  // Ctrl（macOS では Command）+ K で場所への移動の入力欄を開く
+  // Ctrl（macOS では Command）+ K で場所への移動の入力欄を開く。places.json は初めて開いたときに読む
   useEffect(() => {
     const isMac = isMacPlatform(navigator.platform);
     const onKeyDown = (e: KeyboardEvent): void => {
       if (isPlaceSearchShortcut(e, isMac)) {
         e.preventDefault();
         setSearch((s) => (s.open ? s : { ...CLOSED_SEARCH, open: true }));
+        void app.loadPlaces();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -122,7 +80,7 @@ export const App = () => {
       if (hasFiles(dataTransferTypes(e))) {
         e.preventDefault();
         setDragDepth((d) => nextDragDepth(d, "drop"));
-        handleFiles(dispatch, Array.from(e.dataTransfer?.files ?? []));
+        void app.importFiles(Array.from(e.dataTransfer?.files ?? []));
       }
     };
     window.addEventListener("dragenter", onEnter);
@@ -137,71 +95,54 @@ export const App = () => {
     };
   }, []);
 
-  const candidates = searchPlaces(PLACE_INDEX, search.query);
+  // app.placeCandidates と同じ計算。runtime.places から作り、読み終えたときに候補が描き直されるようにする
+  const { places } = runtime;
+  const candidates = places.kind === "ready" ? searchPlaces(places.index, search.query) : [];
 
   return (
     <main className="relative h-dvh overflow-hidden bg-solid-gray-100 font-sans">
       <h1 className="sr-only">RightsizingJPMap</h1>
-      <p
-        aria-hidden={true}
-        className="absolute inset-0 flex items-center justify-center text-oln-16N-100 text-solid-gray-536"
-      >
-        {movedTo === null ? "地図（段階 7 で結線する）" : `地図：${movedTo.name}へ移動`}
-      </p>
+      <div ref={attachMapElement} className="size-full" />
 
-      <div className="absolute top-6 left-6">
+      <div className="absolute top-6 left-6 z-10">
         <IndicatorPanel
           unit={state.unit}
           indicator={state.indicator}
           datasets={state.datasets}
-          joinedClassification={SAMPLE_JOINED_CLASSIFICATION}
-          onIndicatorChange={(indicator) => dispatch({ type: "indicator-selected", indicator })}
-          onUnitChange={(unit) => dispatch({ type: "unit-selected", unit })}
+          joinedClassification={runtime.joinedClassification}
+          onIndicatorChange={(indicator) => app.dispatch({ type: "indicator-selected", indicator })}
+          onUnitChange={(unit) => app.dispatch({ type: "unit-selected", unit })}
         />
       </div>
 
-      <div className="absolute top-6 right-6 flex flex-col items-end gap-2">
-        <AddDataButton onFiles={(files) => handleFiles(dispatch, files)} />
+      <div className="absolute top-6 right-6 z-10 flex flex-col items-end gap-2">
+        <AddDataButton onFiles={(files) => void app.importFiles(files)} />
         <LayerPanel
           datasets={state.datasets}
-          onStyleChange={(id, style) => dispatch({ type: "dataset-style-changed", id, style })}
-          onRemove={(id) => dispatch({ type: "dataset-removed", id })}
+          onStyleChange={(id, style) => void app.changeDatasetStyle(id, style)}
+          onRemove={(id) => void app.removeDataset(id)}
           onRemoveAll={() => {
-            // 取り込んだデータは元に戻せないので、消す前に確かめる。段階 5 で DADS のダイアログに替えるかを決める
+            // 取り込んだデータは元に戻せないので、消す前に確かめる（D27 で window.confirm のままにした）
             if (window.confirm("取り込んだデータをすべて削除します。元に戻せません。")) {
-              dispatch({ type: "datasets-cleared" });
+              void app.clearDatasets();
             }
           }}
         />
       </div>
 
-      <div className="absolute bottom-10 left-1/2 -translate-x-1/2">
+      <div className="absolute bottom-10 left-1/2 z-10 -translate-x-1/2">
         <YearSlider
           years={trackYears(state.unit)}
           selectableYears={selectableYears(state.unit, state.indicator)}
           value={state.year}
-          onChange={(year) => dispatch({ type: "year-selected", year })}
+          onChange={(year) => app.dispatch({ type: "year-selected", year })}
         />
       </div>
-
-      {/* 出典は段階 4 で MapLibre の AttributionControl に移す。それまではこの節を残す */}
-      <section className="absolute bottom-2 left-2 max-w-100 rounded-4 bg-white/80 px-2 py-1 text-dns-14N-130 text-solid-gray-700">
-        <h2 className="sr-only">出典</h2>
-        <ul>
-          {SOURCES.map((s) => (
-            <li key={s.url}>
-              「{s.title}」（{s.owner}）（
-              <Link href={s.url}>{s.url}</Link>
-              ）を加工して作成
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <NoticeList
         notices={state.notices}
         acceptanceUrl={ACCEPTANCE_URL}
-        onDismiss={(id) => dispatch({ type: "notice-dismissed", id })}
+        onDismiss={(id) => app.dispatch({ type: "notice-dismissed", id })}
       />
 
       {search.open && (
@@ -209,18 +150,18 @@ export const App = () => {
           query={search.query}
           candidates={candidates}
           activeIndex={search.activeIndex}
-          loading={false}
+          loading={places.kind === "loading"}
           onQueryChange={(query) => setSearch({ open: true, query, activeIndex: -1 })}
           onActiveIndexChange={(activeIndex) => setSearch((s) => ({ ...s, activeIndex }))}
           onSelect={(place) => {
-            setMovedTo(place);
+            app.moveToPlace(place);
             setSearch(CLOSED_SEARCH);
           }}
           onClose={() => setSearch(CLOSED_SEARCH)}
         />
       )}
 
-      <DropOverlay visible={screen === "02" || dragDepth > 0} />
+      <DropOverlay visible={dragDepth > 0} />
     </main>
   );
 };

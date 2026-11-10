@@ -42,6 +42,8 @@ export default defineConfig({
             // 依存の置き場が空のとき、テストの途中でこれを変換してページを読み込み直した（2026-11-09 の CI）
             "react-dom/client",
             "zustand/vanilla",
+            // main.tsx から app/instance.ts を読むようになり、テストの途中でこれを変換して読み込み直した（2026-11-10）
+            "zustand",
           ],
         },
         test: {

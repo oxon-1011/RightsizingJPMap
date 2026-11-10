@@ -255,8 +255,8 @@ export const updateDatasetStyle = (
 });
 
 /**
- * レイヤーの色の候補。取り込んだ順に、まだ使っていない色を割り当てる。
- * TODO(トラック C): 仮に Okabe と Ito の配色を、地図の塗り分けの Orange と離れた色から並べている
+ * レイヤーの色の候補（D26）。取り込んだ順に、まだ使っていない色を割り当てる。
+ * Okabe と Ito の配色を、地図の塗り分けの Orange と離れた色から並べている
  */
 export const LAYER_COLORS: readonly string[] = [
   "#0072b2",
