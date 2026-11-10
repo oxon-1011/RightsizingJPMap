@@ -64,7 +64,7 @@ describe("CLASSIFICATIONS", () => {
 
   it("人口増減率は減少を Red の濃い順に塗り、増加の階級だけを Blue にする", () => {
     const change = classificationOf("pop_change", "mesh");
-    expect(change.breaks).toEqual([-0.5, -0.4, -0.3, -0.2, -0.1, 0]);
+    expect(change.breaks).toEqual([-0.75, -0.5, -0.35, -0.2, -0.1, 0]);
     expect(change.colors.map(toHex)).toEqual([
       "#850000",
       "#ce0000",

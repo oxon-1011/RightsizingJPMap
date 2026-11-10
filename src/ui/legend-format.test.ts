@@ -19,7 +19,7 @@ describe("legendTicks", () => {
 
   it("人口増減率は負の数にマイナス記号を付け、0 には符号を付けない", () => {
     const ticks = legendTicks(classificationOf("pop_change", "mesh"), "fraction");
-    expect(labelsOf(ticks)).toEqual(["−50", "−40", "−30", "−20", "−10", "0%"]);
+    expect(labelsOf(ticks)).toEqual(["−75", "−50", "−35", "−20", "−10", "0%"]);
     expect(ticks.map((t) => t.position)).toEqual([1, 2, 3, 4, 5, 6].map((k) => k / 7));
   });
 
@@ -109,7 +109,7 @@ describe("legendRangeTexts", () => {
   it("人口増減率の最後の階級は「0% 以上」（増加）", () => {
     const texts = legendRangeTexts(classificationOf("pop_change", "mesh"), "fraction");
     expect(texts).toHaveLength(7);
-    expect(texts[0]).toBe("−50% 未満");
+    expect(texts[0]).toBe("−75% 未満");
     expect(texts[5]).toBe("−10〜0%");
     expect(texts[6]).toBe("0% 以上");
   });

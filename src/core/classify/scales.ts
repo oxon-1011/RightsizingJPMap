@@ -92,8 +92,10 @@ export const CLASSIFICATIONS: Readonly<
   Record<IndicatorId, Readonly<Record<Unit, Classification>>>
 > = {
   aging_rate: sameForBothUnits({ breaks: [0.3, 0.4, 0.5, 0.6, 0.7], colors: DADS_ORANGE_6 }),
+  // −75% は、2050 年以降に人がいなくなるメッシュ（2070 年は約 2 割）を、半減のメッシュと見分けるために置く。
+  // −20% と −10% は、2030 年の5年間の変化を見分けるために残す（2026-11-10 に見直した）。
   pop_change: sameForBothUnits({
-    breaks: [-0.5, -0.4, -0.3, -0.2, -0.1, 0],
+    breaks: [-0.75, -0.5, -0.35, -0.2, -0.1, 0],
     colors: POP_CHANGE_7,
   }),
   elderly_change: sameForBothUnits({
