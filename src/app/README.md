@@ -65,7 +65,8 @@ MapLibre の CSS（`.maplibregl-map` の `position: relative`）は Tailwind の
 
 | 部品 | 値 | 操作 |
 |---|---|---|
-| `IndicatorPanel` | `state.unit`、`state.indicator`、`state.datasets`、`runtime.joinedClassification`、`state.basemap` | `app.dispatch({ type: "indicator-selected", indicator })`、`app.dispatch({ type: "unit-selected", unit })`、`app.dispatch({ type: "basemap-visibility-changed", group, visible })` |
+| `IndicatorPanel` | `state.unit`、`state.indicator`、`state.datasets`、`runtime.joinedClassification` | `app.dispatch({ type: "indicator-selected", indicator })`、`app.dispatch({ type: "unit-selected", unit })` |
+| `MapSettings` | `state.basemap`、`state.fillOpacity` | `app.dispatch({ type: "basemap-selected", id })`、`app.dispatch({ type: "basemap-visibility-changed", group, visible })`、`app.dispatch({ type: "fill-opacity-selected", opacity })` |
 | `YearSlider` | `trackYears(state.unit)`、`selectableYears(state.unit, state.indicator)`、`state.year` | `app.dispatch({ type: "year-selected", year })` |
 | `AddDataButton` | なし | `app.importFiles(files)` |
 | `DropOverlay` | ドラッグの深さ（画面の中の状態） | drop のファイルを `app.importFiles(files)` |
@@ -111,7 +112,8 @@ React Compiler は描くときに呼ぶ関数を純粋とみなし、`app.placeC
 | `changeDatasetStyle` | `writeManifest`、`notify`（書けるタブだけ） | `updateDatasetStyle`、`reduce`（`dataset-style-changed`） |
 | `loadPlaces`、`placeCandidates`、`moveToPlace` | `fetchBytes`（places.json）、`fitBBox` | `parsePlaces`、`buildPlaceIndex`、`searchPlaces` |
 | ホバーのカード | `watchPointer`、`readParquetColumns`（総人口の列） | `meshHoverColumns`、`hoverContent`、`computeMunicipalIndicator`、`parseMunicipalNames`、`indexMeshes` |
-| 背景地図の表示 | `setBasemapVisibility` | `reduce`（`basemap-visibility-changed`） |
+| 背景地図の選択と表示 | `setBasemap` | `reduce`（`basemap-selected`、`basemap-visibility-changed`） |
+| 塗りの不透明度 | `setFillOpacity` | `reduce`（`fill-opacity-selected`） |
 
 生成物の JSON と admin_geom の都道府県のファイルは io の `fetchBytes` で、利用者のファイルは `readBlobBytes` で全体を読む。
 
@@ -198,13 +200,14 @@ Firefox は許可を求める表示を出し、利用者が答えるまで `pers
 2行目の人数の列（`{年}_pop` か、分母の年齢別の人数の列）は、塗り分けに使っていなければ、カードのために1列（約 0.6MB）読む。
 ポインタが地図に乗るまでは読まない。
 
-### 背景地図の表示
+### 背景地図と塗りの不透明度
 
-背景地図の鉄道、道路、川の表示（docs/design/implementation-plan.md の段階 7.5 の 5.）は、core の状態（`AppState.basemap`）に置く。
+選んだ背景地図と、鉄道、道路、川、地名の表示は、core の状態（`AppState.basemap`）に置く。
+塗りの不透明度は、`AppState.fillOpacity` に置く（docs/design/ui.md の「地図の設定」）。
 状態の形と更新は core に置くという約束（docs/guides/coding.md）に合わせた。
 
-- **地図に渡す時期**：ストアの購読で `basemap` が変わったときに、塗り分けの描き直し（`render`）を待たずに `setBasemapVisibility` を呼ぶ。塗り分けは作り直さない。`attachMap` でも地図を作った直後に渡すので、地図を作り直しても選んだ表示が残る。
-- **保存しない**：目録にも OPFS にも書かず、再読み込みで既定（すべて表示）に戻る。モックなので、残す仕組みは足さない（D27）。
+- **地図に渡す時期**：ストアの購読で `basemap` か `fillOpacity` が変わったときに、塗り分けの描き直し（`render`）を待たずに `setBasemap` か `setFillOpacity` を呼ぶ。塗り分けは作り直さない。`attachMap` でも地図を作った直後に両方を渡すので、地図を作り直しても選んだものが残る。
+- **保存しない**：目録にも OPFS にも書かず、再読み込みで既定（ベクトルタイルの背景地図、すべて表示、不透明）に戻る。モックなので、残す仕組みは足さない（D27）。
 - **閲覧専用のタブ**：目録を書かないので、閲覧専用のタブでも切り替えられる。
 
 ### 画面の通知にない失敗

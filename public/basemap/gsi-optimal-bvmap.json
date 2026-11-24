@@ -6,7 +6,16 @@
     "rjm:layerGroups": {
       "rail": ["rail-tunnel", "rail", "rail-dash"],
       "road": ["road"],
-      "river": ["river"]
+      "river": ["river"],
+      "label": ["label-place"]
+    },
+    "rjm:basemaps": {
+      "vector": ["land", "water"],
+      "photo": ["gsi-photo"],
+      "pale": ["gsi-pale"],
+      "std": ["gsi-std"],
+      "relief": ["gsi-relief"],
+      "osm": ["osm-standard"]
     }
   },
   "sources": {
@@ -14,6 +23,46 @@
       "type": "vector",
       "url": "pmtiles://https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/optimal_bvmap-v1.pmtiles",
       "attribution": "国土地理院最適化ベクトルタイル"
+    },
+    "gsi-photo": {
+      "type": "raster",
+      "tiles": ["https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg"],
+      "tileSize": 256,
+      "minzoom": 2,
+      "maxzoom": 18,
+      "attribution": "地理院タイル"
+    },
+    "gsi-pale": {
+      "type": "raster",
+      "tiles": ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "minzoom": 5,
+      "maxzoom": 18,
+      "attribution": "地理院タイル"
+    },
+    "gsi-std": {
+      "type": "raster",
+      "tiles": ["https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "minzoom": 5,
+      "maxzoom": 18,
+      "attribution": "地理院タイル"
+    },
+    "gsi-relief": {
+      "type": "raster",
+      "tiles": ["https://cyberjapandata.gsi.go.jp/xyz/relief/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "minzoom": 5,
+      "maxzoom": 15,
+      "attribution": "地理院タイル"
+    },
+    "osm": {
+      "type": "raster",
+      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "minzoom": 0,
+      "maxzoom": 19,
+      "attribution": "© OpenStreetMap contributors"
     }
   },
   "layers": [
@@ -22,6 +71,26 @@
       "type": "background",
       "paint": { "background-color": ["step", ["zoom"], "#e6e6e6", 8, "#ffffff"] }
     },
+    {
+      "id": "gsi-photo",
+      "type": "raster",
+      "source": "gsi-photo",
+      "layout": { "visibility": "none" }
+    },
+    {
+      "id": "gsi-pale",
+      "type": "raster",
+      "source": "gsi-pale",
+      "layout": { "visibility": "none" }
+    },
+    { "id": "gsi-std", "type": "raster", "source": "gsi-std", "layout": { "visibility": "none" } },
+    {
+      "id": "gsi-relief",
+      "type": "raster",
+      "source": "gsi-relief",
+      "layout": { "visibility": "none" }
+    },
+    { "id": "osm-standard", "type": "raster", "source": "osm", "layout": { "visibility": "none" } },
     {
       "id": "land",
       "type": "fill",

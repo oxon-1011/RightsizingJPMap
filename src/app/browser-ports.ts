@@ -9,7 +9,8 @@ import {
   BASEMAP_STYLE_FILE,
   fitBBox,
   setAdminFill,
-  setBasemapVisibility,
+  setBasemap,
+  setFillOpacity,
   setOverlayLayers,
   startMap,
   stopMap,
@@ -24,8 +25,14 @@ import { createDuckDbEngine } from "./duckdb-engine";
 import { ATTRIBUTION_DETAILS_URL } from "./links";
 import type { AppPorts, FetchError, MapView } from "./ports";
 
-/** 最初に映す範囲。日本の全体（与那国島から宗谷岬まで）が収まる */
+/** 最初に映す範囲。日本の全体（与那国島から宗谷岬まで）が収まる。URL に位置があれば、そちらを映す */
 export const INITIAL_BOUNDS: BBox = [122.9, 24.0, 146.0, 45.6];
+
+/**
+ * 地図の位置を URL に載せるときの名前。URL は `#map=ズーム/緯度/経度` になり、北が上でなければ向きが続く。
+ * 名前を付けるのは、# 以降にほかの値を足せるようにするためである
+ */
+export const POSITION_HASH_NAME = "map";
 
 /** 生成物のファイル全体を読む。admin_geom の都道府県のファイル（数百 KB）と、小さな JSON に使う */
 const fetchBaseBytes = async (file: DataFile): Promise<Result<Uint8Array, FetchError>> => {
@@ -56,6 +63,7 @@ const startMapView = async (container: HTMLElement) => {
     adminTilesUrl: baseDataUrl(DATA_FILES.adminTiles),
     bounds: INITIAL_BOUNDS,
     attributionDetailsUrl: ATTRIBUTION_DETAILS_URL,
+    positionHashName: POSITION_HASH_NAME,
   });
   if (!started.ok) {
     return started;
@@ -64,7 +72,8 @@ const startMapView = async (container: HTMLElement) => {
   const view: MapView = {
     setAdminFill: (spec) => setAdminFill(handle, spec),
     setOverlayLayers: (layers) => setOverlayLayers(handle, layers),
-    setBasemapVisibility: (visibility) => setBasemapVisibility(handle, visibility),
+    setBasemap: (selection) => setBasemap(handle, selection),
+    setFillOpacity: (opacity) => setFillOpacity(handle, opacity),
     fitBBox: (bbox) => fitBBox(handle, bbox),
     watchPointer: (listener) => watchPointer(handle, listener),
     stop: () => stopMap(handle),

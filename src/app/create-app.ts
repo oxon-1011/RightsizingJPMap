@@ -38,7 +38,9 @@ export type UiAction = Extract<
       | "year-selected"
       | "indicator-selected"
       | "notice-dismissed"
-      | "basemap-visibility-changed";
+      | "basemap-selected"
+      | "basemap-visibility-changed"
+      | "fill-opacity-selected";
   }
 >;
 
@@ -51,7 +53,7 @@ export type App<Container> = {
   /** 地図を作って描く。前の地図があれば片付ける */
   readonly attachMap: (container: Container) => Promise<Result<void, AppError>>;
   readonly detachMap: () => void;
-  /** 単位、年、指標、背景地図の表示の切り替えと、通知を閉じる操作。地図はストアの購読から描き直す */
+  /** 単位、年、指標、背景地図、塗りの不透明度の切り替えと、通知を閉じる操作。地図はストアの購読から描き直す */
   readonly dispatch: (action: UiAction) => void;
   /** ファイルを1つずつ取り込む。拒否は通知に出す */
   readonly importFiles: (files: readonly ImportFile[]) => Promise<void>;
@@ -274,11 +276,19 @@ export const createApp = <Container>(
     void render();
   };
 
-  /** 背景地図の表示を地図に渡す。塗り分けとは別に、すぐに反映する */
+  /** 背景地図の選択を地図に渡す。塗り分けとは別に、すぐに反映する */
   const applyBasemap = (view: MapView): void => {
-    const shown = view.setBasemapVisibility(getState().basemap);
+    const shown = view.setBasemap(getState().basemap);
     if (!shown.ok) {
       report({ kind: "map", error: shown.error });
+    }
+  };
+
+  /** 塗りの不透明度を地図に渡す。色は変わらないので、塗り分けは作り直さない */
+  const applyFillOpacity = (view: MapView): void => {
+    const set = view.setFillOpacity(getState().fillOpacity);
+    if (!set.ok) {
+      report({ kind: "map", error: set.error });
     }
   };
 
@@ -300,6 +310,9 @@ export const createApp = <Container>(
     }
     if (a.basemap !== b.basemap && map !== null) {
       applyBasemap(map);
+    }
+    if (a.fillOpacity !== b.fillOpacity && map !== null) {
+      applyFillOpacity(map);
     }
   });
 
@@ -336,8 +349,9 @@ export const createApp = <Container>(
     }
     map = started.value;
     unwatchPointer = map.watchPointer(hover.onPointer);
-    // スタイルの既定はすべて表示。地図を作り直したときも、選んでいた表示に合わせる
+    // 作ったばかりの地図は既定の背景地図と不透明の塗り。地図を作り直したときも、選んでいたものに合わせる
     applyBasemap(map);
+    applyFillOpacity(map);
     await render();
     return ok(undefined);
   };

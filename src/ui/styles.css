@@ -8,3 +8,61 @@
   地図の塗り分けの配色は CSS ではなく core の定数に置く（src/core/classify/scales.ts）。
 */
 @import "@digital-go-jp/tailwind-theme-plugin/v4";
+
+/*
+  地図のコントロール（ズーム、方位磁石、現在地、縮尺）。MapLibre の標準の部品をそのまま使い、
+  角の丸み、影、押したときの色、フォーカスの枠だけを、ほかの部品（DADS）にそろえる（src/io/map.ts）。
+  MapLibre の CSS より先に読まれても勝つよう、部品が持つ .maplibregl-ctrl を重ねて詳細度を上げる。
+  地図の要素の .maplibregl-map には頼らない。開発時の StrictMode では、先に作った地図の片付けが、
+  作り直した地図の要素からこのクラスを外すからである。
+*/
+.maplibregl-ctrl.maplibregl-ctrl-group:not(:empty) {
+  @apply rounded-8 shadow-2;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-scale {
+  @apply border-solid-gray-800 text-solid-gray-800;
+}
+
+/* 右上のボタンと左上のパネルの、画面の端からの間隔（24px）にそろえる */
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl.maplibregl-ctrl-group {
+  margin-right: 1.5rem;
+}
+
+/*
+  縮尺は、出典の表示の行（高さ 24px）の上に置き、下端を右下のボタンにそろえる。
+  出典の表示は、背景地図によっては左下まで伸びるので、同じ行に置くと重なる。
+*/
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl.maplibregl-ctrl-scale {
+  margin-bottom: calc(24px + 10px);
+  margin-left: 1.5rem;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button {
+  @apply size-8;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button:first-child {
+  @apply rounded-t-8;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button:last-child {
+  @apply rounded-b-8;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button + button {
+  @apply border-solid-gray-100;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button:not(:disabled):hover {
+  @apply bg-solid-gray-50;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button:not(:disabled):active {
+  @apply bg-solid-gray-100;
+}
+
+/* フォーカスの枠は、キーボードで操作したときだけ出す。隣のボタンに隠れないよう、手前に出す */
+.maplibregl-ctrl.maplibregl-ctrl-group button:focus:focus-visible {
+  @apply relative z-10 outline-4 outline-black outline-offset-[calc(2/16*1rem)] ring-[calc(2/16*1rem)] ring-yellow-300;
+}

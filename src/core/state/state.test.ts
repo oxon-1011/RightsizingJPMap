@@ -220,36 +220,70 @@ describe("通知", () => {
 });
 
 describe("背景地図の表示", () => {
-  it("はじめはすべて表示し、単位ごとに切り替える", () => {
-    expect(INITIAL_STATE.basemap).toEqual({ rail: true, road: true, river: true });
+  const ALL = { rail: true, road: true, river: true, label: true };
+
+  it("はじめはベクトルタイルの背景地図ですべて表示し、単位ごとに切り替える", () => {
+    expect(INITIAL_STATE.basemap).toEqual({ id: "vector", visibility: ALL });
     const state = run(
       INITIAL_STATE,
       { type: "basemap-visibility-changed", group: "rail", visible: false },
       { type: "basemap-visibility-changed", group: "river", visible: false },
       { type: "basemap-visibility-changed", group: "rail", visible: true },
     );
-    expect(state.basemap).toEqual({ rail: true, road: true, river: false });
+    expect(state.basemap).toEqual({ id: "vector", visibility: { ...ALL, river: false } });
     expect({ ...state, basemap: INITIAL_STATE.basemap }).toEqual(INITIAL_STATE);
   });
 
-  it("同じ表示を選んだら、同じ状態を返す", () => {
-    const state = reduce(INITIAL_STATE, {
-      type: "basemap-visibility-changed",
-      group: "road",
-      visible: true,
-    });
-    expect(state).toBe(INITIAL_STATE);
+  it("背景地図を選んでも、単位ごとの表示は変えない", () => {
+    const state = run(
+      INITIAL_STATE,
+      { type: "basemap-visibility-changed", group: "label", visible: false },
+      { type: "basemap-selected", id: "photo" },
+    );
+    expect(state.basemap).toEqual({ id: "photo", visibility: { ...ALL, label: false } });
+  });
+
+  it("選んだ背景地図が隠している単位でも、設定を覚える", () => {
+    const state = run(
+      INITIAL_STATE,
+      { type: "basemap-selected", id: "pale" },
+      { type: "basemap-visibility-changed", group: "road", visible: false },
+      { type: "basemap-selected", id: "vector" },
+    );
+    expect(state.basemap).toEqual({ id: "vector", visibility: { ...ALL, road: false } });
+  });
+
+  it("同じ背景地図、同じ表示を選んだら、同じ状態を返す", () => {
+    expect(
+      reduce(INITIAL_STATE, { type: "basemap-visibility-changed", group: "road", visible: true }),
+    ).toBe(INITIAL_STATE);
+    expect(reduce(INITIAL_STATE, { type: "basemap-selected", id: "vector" })).toBe(INITIAL_STATE);
   });
 
   it("閲覧専用のタブでも切り替える", () => {
     const readOnly = run(INITIAL_STATE, { type: "access-changed", access: "read-only" });
-    const state = reduce(readOnly, {
-      type: "basemap-visibility-changed",
-      group: "road",
-      visible: false,
-    });
-    expect(state.basemap.road).toBe(false);
+    const state = run(
+      readOnly,
+      { type: "basemap-visibility-changed", group: "road", visible: false },
+      { type: "basemap-selected", id: "osm" },
+    );
+    expect(state.basemap.visibility.road).toBe(false);
+    expect(state.basemap.id).toBe("osm");
     expect(state.notices).toEqual(readOnly.notices);
+  });
+});
+
+describe("塗りの不透明度", () => {
+  it("はじめは不透明で、選んだ値に変える。ほかの状態は変えない", () => {
+    expect(INITIAL_STATE.fillOpacity).toBe(1);
+    const state = reduce(INITIAL_STATE, { type: "fill-opacity-selected", opacity: 0.4 });
+    expect(state).toEqual({ ...INITIAL_STATE, fillOpacity: 0.4 });
+  });
+
+  it("同じ値を選んだら、同じ状態を返す", () => {
+    expect(reduce(INITIAL_STATE, { type: "fill-opacity-selected", opacity: 1 })).toBe(
+      INITIAL_STATE,
+    );
   });
 });
 

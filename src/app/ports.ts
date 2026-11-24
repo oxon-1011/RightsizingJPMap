@@ -6,7 +6,8 @@ import type { BBox } from "../core/data/schema";
 import type { DataFile } from "../core/data/url";
 import type { PointAdminAssignment } from "../core/join/admin";
 import type { AdminFillSpec } from "../core/render/admin";
-import type { BasemapVisibility } from "../core/render/basemap";
+import type { BasemapSelection } from "../core/render/basemap";
+import type { FillOpacity } from "../core/render/fill-opacity";
 import type { Result } from "../core/result";
 import type { ManifestError } from "../core/storage/manifest";
 import type { OverlayLayers } from "../io/deck-layers";
@@ -19,8 +20,10 @@ import type { ManifestChannel, TabsError, WriterLock } from "../io/tabs";
 export type MapView = {
   readonly setAdminFill: (spec: AdminFillSpec) => Result<void, MapError>;
   readonly setOverlayLayers: (layers: OverlayLayers) => Result<void, MapError>;
-  /** 背景地図の鉄道、道路、川の表示を切り替える */
-  readonly setBasemapVisibility: (visibility: BasemapVisibility) => Result<void, MapError>;
+  /** 背景地図を替え、鉄道、道路、川、地名の表示を切り替える */
+  readonly setBasemap: (selection: BasemapSelection) => Result<void, MapError>;
+  /** 塗り分け（メッシュと行政区域の塗り）の不透明度を変える。自前データのレイヤーは変えない */
+  readonly setFillOpacity: (opacity: FillOpacity) => Result<void, MapError>;
   readonly fitBBox: (bbox: BBox) => void;
   /** ポインタの下のものを知らせる（ホバーのカード）。返した関数で知らせるのをやめる */
   readonly watchPointer: (listener: (event: MapPointerEvent) => void) => () => void;

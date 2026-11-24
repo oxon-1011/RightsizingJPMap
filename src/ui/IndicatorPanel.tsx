@@ -1,14 +1,14 @@
 // 左上のパネル。指標のセレクトボックス、凡例、単位の切り替えを縦に並べる（Figma の「Panel / 指標」）。
 // 見出しや説明文は置かない。自前データの指標を選んだときだけ、分母のセレクトボックスを出す（D24）。
-// 単位の切り替えの右に、背景地図の設定を開く歯車を置く（段階 7.5 の 5.。Figma の画面にはまだない）。
+// 単位の切り替えの右に、地図の設定を開く歯車（MapSettings.tsx）を置く（Figma の画面にはまだない）。
+// 歯車と設定は settings で受け取る。設定はこのパネルの右に開くので、位置の基準になるよう section を relative にする。
 
+import type { ReactNode } from "react";
 import type { Classification } from "../core/classify/classify";
 import { classificationOf } from "../core/classify/scales";
 import { INDICATORS, type Unit } from "../core/indicators/definitions";
-import type { BasemapLayerGroup, BasemapVisibility } from "../core/render/basemap";
 import type { IndicatorSelection } from "../core/state/state";
 import type { DatasetEntry } from "../core/storage/manifest";
-import { BasemapSettings } from "./BasemapSettings";
 import { Select } from "./dads/Select";
 import {
   DENOMINATOR_OPTIONS,
@@ -30,11 +30,10 @@ type IndicatorPanelProps = {
    * まだ作れていなければ null で、凡例を出さない。ベースデータの指標では使わない。
    */
   joinedClassification: Classification | null;
-  /** 背景地図の鉄道、道路、川を表示するか */
-  basemap: BasemapVisibility;
+  /** 地図の設定の歯車（MapSettings）。単位の切り替えの右に置く */
+  settings: ReactNode;
   onIndicatorChange: (indicator: IndicatorSelection) => void;
   onUnitChange: (unit: Unit) => void;
-  onBasemapChange: (group: BasemapLayerGroup, visible: boolean) => void;
 };
 
 /** 凡例に使う階級区分と数字の種類 */
@@ -63,10 +62,9 @@ export const IndicatorPanel = ({
   indicator,
   datasets,
   joinedClassification,
-  basemap,
+  settings,
   onIndicatorChange,
   onUnitChange,
-  onBasemapChange,
 }: IndicatorPanelProps) => {
   const groups = indicatorOptionGroups(unit, datasets, indicator);
   const options = groups.flatMap((g) => g.options);
@@ -74,7 +72,7 @@ export const IndicatorPanel = ({
   return (
     <section
       aria-label="指標"
-      className="flex w-80 flex-col items-start gap-4 rounded-8 bg-white p-4 shadow-2"
+      className="relative flex w-80 flex-col items-start gap-4 rounded-8 bg-white p-4 shadow-2"
     >
       <Select
         aria-label="指標"
@@ -129,7 +127,7 @@ export const IndicatorPanel = ({
       {legend !== null && <Legend classification={legend.classification} scale={legend.scale} />}
       <div className="flex w-full items-center justify-between">
         <UnitSwitch unit={unit} onChange={onUnitChange} />
-        <BasemapSettings visibility={basemap} onChange={onBasemapChange} />
+        {settings}
       </div>
     </section>
   );

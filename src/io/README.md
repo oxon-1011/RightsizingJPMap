@@ -13,7 +13,7 @@ hyparquet、DuckDB-WASM、OPFS、Web Locks、MapLibre、deck.gl の呼び出し�
 | `duckdb.ts` | DuckDB-WASM | `startDuckDb`、`stopDuckDb`、`registerFile`、`dropFile`、`query`、`readFileBytes`、`loadSpatial` |
 | `opfs.ts` | OPFS、`navigator.storage` | `openStorage`、`openMemoryStorage`、`requestPersistence`、`isPersisted` |
 | `tabs.ts` | Web Locks、BroadcastChannel | `acquireWriterLock`、`openManifestChannel` |
-| `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`setBasemapVisibility`、`fitBBox`、`watchPointer` |
+| `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`setFillOpacity`、`setBasemap`、`fitBBox`、`watchPointer` |
 | `deck-layers.ts` | deck.gl のレイヤー | `parseOverlayGeoJson`（レイヤーの組み立ては `setOverlayLayers` が呼ぶ） |
 | `bytes.ts` | `fetch`、`Blob.arrayBuffer` | `fetchBytes`、`readBlobBytes` |
 
@@ -88,7 +88,7 @@ React に依存しないので、app の手続きから呼ぶ。
 ```ts
 import { adminFillSpec } from "../core/render/admin";
 import { meshLayerSpec } from "../core/render/mesh";
-import { BASEMAP_STYLE_FILE, setAdminFill, setBasemapVisibility, setOverlayLayers, startMap } from "../io/map";
+import { BASEMAP_STYLE_FILE, setAdminFill, setBasemap, setFillOpacity, setOverlayLayers, startMap } from "../io/map";
 
 const started = await startMap({
   container,                                                   // 大きさは呼び出し側の CSS で決める
@@ -96,6 +96,7 @@ const started = await startMap({
   adminTilesUrl: baseDataUrl("admin.pmtiles"),
   bounds: [122.9, 24.0, 146.0, 45.6],                          // 最初に映す範囲
   attributionDetailsUrl: "#",                                  // 出典の詳細のページ
+  positionHashName: "map",                                     // URL の #map=... に位置を載せる。null なら載せない
 });
 if (!started.ok) return started;                               // kind で理由が分かる
 const map = started.value;
@@ -112,11 +113,14 @@ setOverlayLayers(map, {
   geoJsons,
 });
 
-// 背景地図の鉄道を隠す。単位（rail、road、river）は core の BASEMAP_LAYER_GROUPS
-setBasemapVisibility(map, { rail: false, road: true, river: true });
+// 背景地図を写真に替え、鉄道を隠す。候補は core の BASEMAP_IDS、単位は BASEMAP_LAYER_GROUPS
+setBasemap(map, { id: "photo", visibility: { rail: false, road: true, river: true, label: true } });
+
+// 塗り分けを半透明にする。値は core の FILL_OPACITIES
+setFillOpacity(map, 0.4);
 ```
 
-`startMap` は、背景地図のスタイルを読み、行政区域のレイヤー、deck.gl、出典の表示を足したところで返す。
+`startMap` は、背景地図のスタイルを読み、行政区域のレイヤー、deck.gl、出典の表示、コントロール（ズームと方位磁石、現在地、縮尺）を足したところで返す。
 タイルを読み終えるのは待たないので、返したあとすぐに `setAdminFill` と `setOverlayLayers` を呼んでよい。
 失敗したときは、作りかけの地図を片付けてから、次のどれかを返す。
 
@@ -147,12 +151,32 @@ setBasemapVisibility(map, { rail: false, road: true, river: true });
 自前データの点は、同じ座標の配列（`PointLayerSpec.positions`）なら座標を転送し直さない。
 線と面の GeoJSON は `parseOverlayGeoJson` で一度だけ読み、同じ値を渡し続ける。
 
-`setBasemapVisibility` は、背景地図の鉄道、道路、川の表示を切り替える。
-単位ごとのレイヤーの ID は、`startMap` がスタイルの `metadata` から読んだもの（`MapHandle.basemapLayers`）を使う。
-変えるのは layout の `visibility` だけで、タイルは読み直さない。
+`setFillOpacity` は、塗り分け（メッシュと行政区域の塗り）の不透明度を変える。
+行政区域は `fill-opacity` を変え、メッシュは最後に渡されたレイヤーを、不透明度だけを変えて渡し直す。
+どちらも色は送り直さない。
+自前データのレイヤーには効かない。
+deck.gl は、レイヤーを渡し直さないと不透明度を変えられないので、`MapHandle.fill` に不透明度と最後のレイヤーを持つ。
+`MapHandle` の中で書き換えるのは、ここだけである。
+deck.gl 9.4.1 は `opacity` を 1/2.2 乗してから色のアルファに掛けるので、`deck-layers.ts` の `deckOpacity` が 2.2 乗した値を渡し、MapLibre の `fill-opacity` と同じ濃さにする。
+
+`setBasemap` は、背景地図を替え、鉄道、道路、川、地名の表示を切り替える。
+候補ごと、単位ごとのレイヤーの ID は、`startMap` がスタイルの `metadata` から読んだもの（`MapHandle.basemapLayers`）を使う。
+どのレイヤーを表示するかは、core の `basemapLayerVisibility` が決める。
+変えるのは layout の `visibility` だけで、スタイルは読み直さない。
+MapLibre は、表示していないレイヤーのタイルを読まないので、ラスターのタイルは、その背景地図を選んだときに初めて読む。
 川（`river`）は塗りを差し込む位置（`choropleth`）でもあるが、隠しても重なりの順は変わらず、メッシュと行政区域の塗りは描かれる（`map.browser.test.ts` で確かめている）。
 
+`setBasemap` は、右下の出典の表示も差し替える。
+並べる提供元は core の `basemapCredits` が決め、`AttributionControl` の `options.customAttribution` を書き換える。
+`AttributionControl` は、レイヤーの表示が変わったあとの描画で、この値を読み直す。
+MapLibre は出典を文字数の順に並べ替えるので、並びを保つために、出典の全体を1つの文字列にしている。
+スタイルのソースの `attribution` は、この文字列に含まれる文字にしてあり、MapLibre が重複として省く。
+出典は、幅の狭い地図でも畳まない（`compact: false`）。
+OpenStreetMap のタイルの利用の方針が、帰属の表示を切り替えのボタンの奥に隠さないよう求めているからである。
+
 `fitBBox` は、範囲が収まるように地図を動かす（場所への移動、D21）。
+地図の向きは変えない。
+MapLibre の `fitBounds` は、既定では北を上に戻すので、いまの向きを渡している。
 
 `watchPointer` は、ホバーのカードのために、ポインタの下のものを知らせる。
 知らせは2種類で、`hover` はポインタの位置、地図の要素の大きさ、ポインタの下のもの（core の `HoverHit`）を持つ。
@@ -174,8 +198,30 @@ MapboxOverlay は、interleaved では MapLibre の mousemove を deck.gl に渡
 カメラが変わったあとの最初の picking は 50〜90ms かかり（2回目からは約 10ms）、動き終えた直後はそれに、GPU が最後のフレームを描き終えるのを待つ時間が加わる。
 クリックは扱わない。MapLibre は、押した位置から 3px（`clickTolerance` の既定）以上動かして離すと、`click` を出さない（`map.browser.test.ts` で確かめている）。
 
-地図は回転と傾きを止め、ズームを 4〜16 に限っている。
+地図は、ズームを 4〜16 に限っている。
 地理院の最適化ベクトルタイルが z4 からしかなく、z4 未満では背景地図が描かれないからである。
+回転はできるが、傾きは `maxPitch: 0` で止めている（2026-11-24）。
+`pitchWithRotate: false` だけでは、キーボードの Shift + 上下で傾くからである。
+
+#### コントロールと URL の位置
+
+コントロールは、MapLibre の標準の部品を使う（2026-11-24）。
+右下に、上からズームと方位磁石（`NavigationControl`）、現在地（`GeolocateControl`）、出典を置き、左下に縮尺（`ScaleControl`）を置く。
+下の隅のコントロールは、あとに足したものほど上に並ぶので、出典、現在地、ズームと方位磁石の順に足している。
+ボタンの説明（`title` と `aria-label`）は、`Map` の `locale` で日本語にしている。
+見た目は `src/ui/styles.css` で、ほかの部品にそろえている。
+現在地は、ボタンを押したときに1回だけ求め（`trackUserLocation: false`）、追い続けない。
+
+`positionHashName` を渡すと、地図の位置を URL の `#` 以降に載せる。
+文字列との変換は core の `position/hash.ts` がし、`map.ts` は読むことと書くことだけをする。
+
+- **開くとき**：URL に位置があれば、`bounds` の代わりにその位置を映す。読めない位置（範囲の外の値、数でない値）なら、`bounds` を映す。
+- **書くとき**：地図が動き終えるたび（`moveend`）に、`history.replaceState` で書く。履歴は増えない。開いただけでは書かない。
+- **URL が変わったとき**：`hashchange` で読み直し、その位置へ移す。地図を片付けると、聞くのをやめる（`remove` のイベント）。
+
+MapLibre の `hash` のオプションは使わない。
+MapLibre は、作った直後の位置（ズーム 4、緯度 0、経度 0）を URL に書いてから `bounds` に合わせ、合わせたあとの位置は 300ms 遅れて書く。
+そのあいだに地図を作り直す（開発時の React の StrictMode）と、作り直した地図が緯度 0、経度 0 を映した（2026-11-24）。
 
 #### MapLibre と deck.gl の組み合わせで足した処理
 
@@ -228,6 +274,8 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 | レイヤー | ソースのレイヤー | 描くもの |
 |---|---|---|
 | `background` | なし | z8 未満は海（DADS の SolidGray/100）、z8 からは陸（White） |
+| `gsi-photo`、`gsi-pale`、`gsi-std`、`gsi-relief` | なし（ラスター） | 地理院タイルの写真、淡色地図、標準地図、色別標高図。背景地図に選んだものだけを表示する |
+| `osm-standard` | なし（ラスター） | OpenStreetMap の標準のタイル。背景地図に選んだときだけ表示する |
 | `land` | `AdmArea` | z8 未満の陸（White） |
 | `water` | `WA` | 海、湖、川（SolidGray/100）。川と湖は `river` が上から塗り直す |
 | `river` | `WA` | 海（`vt_code` 5100、5101）以外の水域（Cyan/300）。塗りとメッシュの上に描く |
@@ -271,14 +319,38 @@ core の `MeshLayerSpec`、`PointLayerSpec`、`GeoJsonLayerSpec` を、deck.gl �
 "rjm:layerGroups": {
   "rail": ["rail-tunnel", "rail", "rail-dash"],
   "road": ["road"],
-  "river": ["river"]
+  "river": ["river"],
+  "label": ["label-place"]
 }
 ```
 
-単位は core の `BASEMAP_LAYER_GROUPS`（`rail`、`road`、`river`）で、3つとも書く。
+単位は core の `BASEMAP_LAYER_GROUPS`（`rail`、`road`、`river`、`label`）で、4つとも書く。
 書き方は core の `parseBasemapLayerIds` が、レイヤーがスタイルにあるかは `startMap` が確かめ、満たさなければ `style-contract` を返す。
 
-スタイルを差し替える（たとえば Protomaps にする）ときは、`rjm:insertBefore` の2つの位置と `rjm:layerGroups` を書けば、`map.ts` と画面を変えずに済む。
+`metadata` の `rjm:basemaps` には、背景地図の候補ごとに、選んだときにだけ表示するレイヤーの ID を書く。
+
+```json
+"rjm:basemaps": {
+  "vector": ["land", "water"],
+  "photo": ["gsi-photo"],
+  "pale": ["gsi-pale"],
+  "std": ["gsi-std"],
+  "relief": ["gsi-relief"],
+  "osm": ["osm-standard"]
+}
+```
+
+候補は core の `BASEMAP_IDS` で、6つとも書く。
+検査は `rjm:layerGroups` と同じで、書き方は core の `parseBasemapSurfaceIds` が確かめる。
+ラスターのレイヤーは、`background` と `land` のあいだに、`visibility: none` で置く。
+塗りを差し込む位置（`river`）より下なので、塗り分け、線、境界線、地名は、どの背景地図でも同じ順に重なる。
+候補ごとに隠す単位（淡色地図、標準地図、OpenStreetMap は4つとも、写真は川）は、スタイルではなく core の `BASEMAP_HIDDEN_GROUPS` に置く。
+
+ラスターのタイルは 256px で、MapLibre は地図のズームより 1 大きいズームレベルのタイルを読む。
+地図のズーム 4〜16 は、タイルのズームレベル 5〜17 にあたる。
+色別標高図のタイルはズームレベル 15 までなので、地図のズーム 15 から先は、同じタイルを拡大して描く。
+
+スタイルを差し替える（たとえば Protomaps にする）ときは、`rjm:insertBefore` の2つの位置、`rjm:layerGroups`、`rjm:basemaps` を書けば、`map.ts` と画面を変えずに済む。
 
 ## CSV の結合用の列を文字列で読む方法
 

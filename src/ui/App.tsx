@@ -14,6 +14,7 @@ import { HoverCard } from "./HoverCard";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { isMacPlatform, isPlaceSearchShortcut } from "./keyboard";
 import { LayerPanel } from "./LayerPanel";
+import { MapSettings } from "./MapSettings";
 import { NoticeList } from "./NoticeList";
 import { PlaceSearch } from "./PlaceSearch";
 import { YearSlider } from "./YearSlider";
@@ -121,12 +122,21 @@ export const App = () => {
           indicator={state.indicator}
           datasets={state.datasets}
           joinedClassification={runtime.joinedClassification}
-          basemap={state.basemap}
+          settings={
+            <MapSettings
+              basemap={state.basemap}
+              fillOpacity={state.fillOpacity}
+              onBasemapSelect={(id) => app.dispatch({ type: "basemap-selected", id })}
+              onLayerGroupChange={(group, visible) =>
+                app.dispatch({ type: "basemap-visibility-changed", group, visible })
+              }
+              onFillOpacitySelect={(opacity) =>
+                app.dispatch({ type: "fill-opacity-selected", opacity })
+              }
+            />
+          }
           onIndicatorChange={(indicator) => app.dispatch({ type: "indicator-selected", indicator })}
           onUnitChange={(unit) => app.dispatch({ type: "unit-selected", unit })}
-          onBasemapChange={(group, visible) =>
-            app.dispatch({ type: "basemap-visibility-changed", group, visible })
-          }
         />
       </div>
 

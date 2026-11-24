@@ -8,8 +8,11 @@ import {
   AttributionControl,
   addProtocol,
   type ErrorEvent,
+  GeolocateControl,
   type LayerSpecification,
   Map as MapLibreMap,
+  NavigationControl,
+  ScaleControl,
   setWorkerUrl,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -21,13 +24,19 @@ import { Protocol } from "pmtiles";
 import type { Rgba } from "../core/classify/color";
 import { ADMIN_TILE_CODE_PROPERTY, ADMIN_TILE_LAYERS, type BBox } from "../core/data/schema";
 import type { HoverHit } from "../core/hover/hover";
+import { formatPositionHash, parsePositionHash, type ZoomRange } from "../core/position/hash";
 import type { AdminFillSpec } from "../core/render/admin";
 import {
-  type BasemapLayerIds,
-  type BasemapVisibility,
+  type BasemapCredit,
+  type BasemapSelection,
+  type BasemapStyleLayers,
+  basemapCredits,
   basemapLayerVisibility,
+  DEFAULT_BASEMAP,
   parseBasemapLayerIds,
+  parseBasemapSurfaceIds,
 } from "../core/render/basemap";
+import { DEFAULT_FILL_OPACITY } from "../core/render/fill-opacity";
 import { err, ok, type Result } from "../core/result";
 import { type OverlayLayers, overlayDeckLayers } from "./deck-layers";
 
@@ -55,24 +64,54 @@ export type InsertBefore = { readonly choropleth: string; readonly boundary: str
 const INSERT_BEFORE_KEY = "rjm:insertBefore";
 
 /**
- * 背景地図のスタイルの metadata に書く、表示を切り替える単位（鉄道、道路、川）ごとのレイヤーの ID。
+ * 背景地図のスタイルの metadata に書く、表示を切り替える単位（鉄道、道路、川、地名）ごとのレイヤーの ID。
  * 単位は core の BASEMAP_LAYER_GROUPS で決まり、ID はスタイルが決める
  */
 const LAYER_GROUPS_KEY = "rjm:layerGroups";
 
+/**
+ * 背景地図のスタイルの metadata に書く、背景地図の候補ごとの、選んだときにだけ表示するレイヤーの ID。
+ * 候補は core の BASEMAP_IDS で決まり、ID はスタイルが決める
+ */
+const BASEMAPS_KEY = "rjm:basemaps";
+
 /** 地図の最小と最大のズーム。地理院の最適化ベクトルタイルは z4〜16 で、z4 未満では背景地図が描かれない */
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 16;
+const ZOOM_RANGE: ZoomRange = { minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM };
 
-/** 地理院タイル一覧のページ。出典の表示でリンクする（docs/user/attribution.md の「国土地理院」） */
-const GSI_TILE_LIST_URL = "https://maps.gsi.go.jp/development/ichiran.html";
+/**
+ * コントロールのボタンの説明（title と aria-label）。MapLibre の既定は英語なので置き換える。
+ * 縮尺の単位（m、km）と、使っていないコントロールの文言は、既定のままにする
+ */
+const LOCALE = {
+  "AttributionControl.ToggleAttribution": "出典の表示を切り替える",
+  "GeolocateControl.FindMyLocation": "現在地へ移動",
+  "GeolocateControl.LocationNotAvailable": "現在地を取得できません",
+  "Map.Title": "地図",
+  "NavigationControl.ResetBearing": "北を上に戻す",
+  "NavigationControl.ZoomIn": "拡大",
+  "NavigationControl.ZoomOut": "縮小",
+} as const;
+
+/** 縮尺の棒の幅の上限（ピクセル）。棒は、切りのよい距離になるようにこれより短くなる */
+const SCALE_MAX_WIDTH = 120;
 
 export type MapHandle = {
   readonly map: MapLibreMap;
   readonly overlay: MapboxOverlay;
   readonly insertBefore: InsertBefore;
-  /** 表示を切り替える単位ごとの、背景地図のレイヤーの ID */
-  readonly basemapLayers: BasemapLayerIds;
+  /** 背景地図の候補ごと、表示を切り替える単位ごとの、背景地図のスタイルのレイヤーの ID */
+  readonly basemapLayers: BasemapStyleLayers;
+  /** 出典の表示。背景地図を替えたときに、提供元の並びを差し替える */
+  readonly attribution: AttributionControl;
+  /** 出典の表示の「出典の詳細」のリンク先 */
+  readonly attributionDetailsUrl: string;
+  /**
+   * 塗りの不透明度と、最後に渡された deck.gl のレイヤー。この中身だけは書き換える。
+   * deck.gl はレイヤーを渡し直さないと不透明度を変えられないので、不透明度を変えたときに渡し直すために持つ
+   */
+  readonly fill: { opacity: number; layers: OverlayLayers | null };
 };
 
 export type MapError =
@@ -80,7 +119,7 @@ export type MapError =
   | { readonly kind: "create-failed"; readonly message: string }
   /** 背景地図のスタイルを読めなかった */
   | { readonly kind: "style-failed"; readonly message: string }
-  /** 背景地図のスタイルの metadata に、差し込む位置か切り替える単位のレイヤーがないか、そのレイヤーがスタイルにない */
+  /** 背景地図のスタイルの metadata に、差し込む位置、切り替える単位、背景地図の候補のレイヤーがないか、そのレイヤーがスタイルにない */
   | { readonly kind: "style-contract"; readonly message: string }
   /** 行政区域のレイヤーや deck.gl を足す、または更新するときに MapLibre か deck.gl が例外を投げた */
   | { readonly kind: "update-failed"; readonly message: string };
@@ -96,6 +135,11 @@ export type StartMapOptions = {
   readonly bounds: BBox;
   /** 出典の表示の「出典の詳細」のリンク先 */
   readonly attributionDetailsUrl: string;
+  /**
+   * 地図の位置（ズーム、中心、向き）を URL の # 以降に載せるときの名前（core の position/hash.ts）。
+   * 開いたときに URL に位置があれば、bounds の代わりにその位置を映す。null なら載せず、読みもしない
+   */
+  readonly positionHashName: string | null;
 };
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -146,14 +190,21 @@ const readInsertBefore = (map: MapLibreMap): Result<InsertBefore, MapError> => {
   return ok({ choropleth, boundary });
 };
 
-/** スタイルの metadata から、切り替える単位ごとのレイヤーの ID を読む。レイヤーがスタイルにあることも確かめる */
-const readLayerGroups = (map: MapLibreMap): Result<BasemapLayerIds, MapError> => {
+/**
+ * スタイルの metadata から、切り替える単位ごとと、背景地図の候補ごとのレイヤーの ID を読む。
+ * レイヤーがスタイルにあることも確かめる
+ */
+const readBasemapLayers = (map: MapLibreMap): Result<BasemapStyleLayers, MapError> => {
   const metadata: unknown = map.getStyle().metadata;
-  const parsed = parseBasemapLayerIds(isRecord(metadata) ? metadata[LAYER_GROUPS_KEY] : undefined);
-  if (!parsed.ok) {
-    return err({ kind: "style-contract", message: `${LAYER_GROUPS_KEY}: ${parsed.error}` });
+  const groups = parseBasemapLayerIds(isRecord(metadata) ? metadata[LAYER_GROUPS_KEY] : undefined);
+  if (!groups.ok) {
+    return err({ kind: "style-contract", message: `${LAYER_GROUPS_KEY}: ${groups.error}` });
   }
-  const missing = Object.values(parsed.value)
+  const surfaces = parseBasemapSurfaceIds(isRecord(metadata) ? metadata[BASEMAPS_KEY] : undefined);
+  if (!surfaces.ok) {
+    return err({ kind: "style-contract", message: `${BASEMAPS_KEY}: ${surfaces.error}` });
+  }
+  const missing = [...Object.values(groups.value), ...Object.values(surfaces.value)]
     .flat()
     .filter((id) => map.getLayer(id) === undefined);
   if (missing.length > 0) {
@@ -162,7 +213,7 @@ const readLayerGroups = (map: MapLibreMap): Result<BasemapLayerIds, MapError> =>
       message: `スタイルにないレイヤー: ${missing.join(", ")}`,
     });
   }
-  return parsed;
+  return ok({ groups: groups.value, surfaces: surfaces.value });
 };
 
 /**
@@ -229,10 +280,16 @@ const addAdminLayers = (map: MapLibreMap, adminTilesUrl: string, insert: InsertB
   }
 };
 
-/** 出典の表示（docs/user/attribution.md の「画面での表示」）。順序を保つため、1つの文字列にする */
-const attributionHtml = (detailsUrl: string): string =>
+/**
+ * 出典の表示（docs/user/attribution.md の「画面での表示」）。背景地図の提供元、データの提供元、出典の詳細の順に並べる。
+ * MapLibre は出典を文字数の順に並べ替えるので、順序を保つために1つの文字列にする。
+ * 背景地図のスタイルのソースの attribution は、この文字列に含まれるので、MapLibre が重複として省く
+ */
+const attributionHtml = (credits: readonly BasemapCredit[], detailsUrl: string): string =>
   [
-    `<a href="${GSI_TILE_LIST_URL}" target="_blank" rel="noopener">国土地理院最適化ベクトルタイル</a>`,
+    ...credits.map(
+      ({ label, url }) => `<a href="${url}" target="_blank" rel="noopener">${label}</a>`,
+    ),
     "国土数値情報（国土交通省）",
     "国立社会保障・人口問題研究所",
     `<a href="${detailsUrl.replaceAll('"', "&quot;")}">出典の詳細</a>`,
@@ -253,6 +310,44 @@ const exposeTransformForDeck = (map: MapLibreMap): void => {
     get: () => map._camera.transform,
     configurable: true,
   });
+};
+
+/**
+ * 地図の位置を URL の # 以降に載せる。地図が動き終えるたびに書き、URL の # 以降が変わったら（アドレスバーに
+ * 別の位置の URL を貼ったときなど）その位置へ移す。読めない位置の URL では、地図を動かさない。
+ * 履歴は増やさない（replaceState）。地図を片付けると、URL を聞くのをやめる。
+ *
+ * MapLibre の hash のオプションは使わない。作った直後の位置（ズーム 4、緯度 0、経度 0）を URL に書いてから
+ * bounds に合わせるので、その 300ms のあいだに地図を作り直す（React の StrictMode）と、
+ * 作り直した地図が緯度 0、経度 0 を映したからである（2026-11-24）
+ */
+const syncPositionHash = (map: MapLibreMap, name: string): void => {
+  const write = (): void => {
+    const { lng, lat } = map.getCenter();
+    const current = window.location.hash;
+    const next = formatPositionHash(current, name, {
+      zoom: map.getZoom(),
+      lat,
+      lon: lng,
+      bearing: map.getBearing(),
+    });
+    if (next !== current) {
+      window.history.replaceState(window.history.state, "", next);
+    }
+  };
+  const read = (): void => {
+    const position = parsePositionHash(window.location.hash, name, ZOOM_RANGE);
+    if (position !== null) {
+      map.jumpTo({
+        center: [position.lon, position.lat],
+        zoom: position.zoom,
+        bearing: position.bearing,
+      });
+    }
+  };
+  map.on("moveend", write);
+  window.addEventListener("hashchange", read);
+  map.once("remove", () => window.removeEventListener("hashchange", read));
 };
 
 /**
@@ -282,26 +377,40 @@ const waitForStyle = (map: MapLibreMap): Promise<Result<void, MapError>> =>
 export const startMap = async (options: StartMapOptions): Promise<Result<MapHandle, MapError>> => {
   configureMaplibre();
   const [west, south, east, north] = options.bounds;
+  const { positionHashName } = options;
+  const position =
+    positionHashName === null
+      ? null
+      : parsePositionHash(window.location.hash, positionHashName, ZOOM_RANGE);
   let map: MapLibreMap;
   try {
     map = new MapLibreMap({
       container: options.container,
       style: options.styleUrl,
-      bounds: [west, south, east, north],
+      ...(position === null
+        ? { bounds: [west, south, east, north] }
+        : {
+            center: [position.lon, position.lat],
+            zoom: position.zoom,
+            bearing: position.bearing,
+          }),
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
-      // 塗り分けを読む地図なので、回転と傾きは使わない
-      dragRotate: false,
+      // 回転はできるが、傾きは使わない。2D の塗り分けは、傾けても読み取れることが増えない。
+      // maxPitch を 0 にして、キーボード（Shift + 上下）でも傾かないようにする
+      maxPitch: 0,
       pitchWithRotate: false,
       touchPitch: false,
       renderWorldCopies: false,
       attributionControl: false,
+      locale: LOCALE,
     });
   } catch (e) {
     return err({ kind: "create-failed", message: messageOf(e) });
   }
-  map.touchZoomRotate.disableRotation();
-  map.keyboard.disableRotation();
+  if (positionHashName !== null) {
+    syncPositionHash(map, positionHashName);
+  }
 
   const loaded = await waitForStyle(map);
   if (!loaded.ok) {
@@ -313,7 +422,7 @@ export const startMap = async (options: StartMapOptions): Promise<Result<MapHand
     map.remove();
     return insert;
   }
-  const basemapLayers = readLayerGroups(map);
+  const basemapLayers = readBasemapLayers(map);
   if (!basemapLayers.ok) {
     map.remove();
     return basemapLayers;
@@ -325,15 +434,31 @@ export const startMap = async (options: StartMapOptions): Promise<Result<MapHand
     // メッシュを道路、境界線、地名の下に描くためである
     const overlay = new MapboxOverlay({ interleaved: true, layers: [] });
     map.addControl(overlay);
-    map.addControl(
-      new AttributionControl({ customAttribution: attributionHtml(options.attributionDetailsUrl) }),
-      "bottom-right",
-    );
+    // 下の隅のコントロールは、あとに足したものほど上に並ぶ。右下は上から、ズームと方位磁石、現在地、出典の順にする
+    // スタイルの既定は、core の DEFAULT_BASEMAP と同じ（ベクトルタイルの背景地図、線と地名をすべて表示）。
+    // compact を false にして、幅の狭い地図でも出典を畳まない。OpenStreetMap のタイルの利用の方針が、
+    // 帰属の表示を切り替えのボタンの奥に隠さないよう求めているからである（2026-11-24 に読んだ）
+    const attribution = new AttributionControl({
+      compact: false,
+      customAttribution: attributionHtml(
+        basemapCredits(DEFAULT_BASEMAP),
+        options.attributionDetailsUrl,
+      ),
+    });
+    map.addControl(attribution, "bottom-right");
+    // 現在地は、ボタンを押したときに1回だけ求めて移動する。位置はブラウザの中で使うだけで、どこにも送らない
+    map.addControl(new GeolocateControl({ trackUserLocation: false }), "bottom-right");
+    // 方位磁石は、押すと北が上に戻り、ドラッグすると回転する。傾きは使わないので、傾きの表示は出さない
+    map.addControl(new NavigationControl({ visualizePitch: false }), "bottom-right");
+    map.addControl(new ScaleControl({ unit: "metric", maxWidth: SCALE_MAX_WIDTH }), "bottom-left");
     return ok({
       map,
       overlay,
       insertBefore: insert.value,
       basemapLayers: basemapLayers.value,
+      attribution,
+      attributionDetailsUrl: options.attributionDetailsUrl,
+      fill: { opacity: DEFAULT_FILL_OPACITY, layers: null },
     });
   } catch (e) {
     map.remove();
@@ -380,8 +505,9 @@ export const setOverlayLayers = (
   layers: OverlayLayers,
 ): Result<void, MapError> => {
   try {
+    handle.fill.layers = layers;
     handle.overlay.setProps({
-      layers: [...overlayDeckLayers(layers, handle.insertBefore.choropleth)],
+      layers: [...overlayDeckLayers(layers, handle.insertBefore.choropleth, handle.fill.opacity)],
     });
     return ok(undefined);
   } catch (e) {
@@ -390,15 +516,42 @@ export const setOverlayLayers = (
 };
 
 /**
- * 背景地図の鉄道、道路、川の表示を切り替える。layout の visibility を変えるだけで、タイルは読み直さない。
- * 川（river）は塗りを差し込む位置でもあるが、隠しても位置は変わらない。
+ * 塗り分け（メッシュと行政区域の塗り）の不透明度を変える。0 が透明、1 が不透明。
+ * 行政区域は fill-opacity を変え、メッシュは同じレイヤーを不透明度だけ変えて渡し直す。
+ * どちらも色は送り直さない。自前データのレイヤーには効かない。
  */
-export const setBasemapVisibility = (
+export const setFillOpacity = (handle: MapHandle, opacity: number): Result<void, MapError> => {
+  try {
+    handle.fill.opacity = opacity;
+    for (const { id } of ADMIN_FILL_LAYERS) {
+      handle.map.setPaintProperty(id, "fill-opacity", opacity);
+    }
+    return handle.fill.layers === null
+      ? ok(undefined)
+      : setOverlayLayers(handle, handle.fill.layers);
+  } catch (e) {
+    return err({ kind: "update-failed", message: messageOf(e) });
+  }
+};
+
+/**
+ * 背景地図を替え、鉄道、道路、川、地名の表示を切り替える。layout の visibility を変えるだけで、
+ * スタイルは読み直さない。MapLibre は、表示していないレイヤーのタイルを読まない。
+ * 川（river）と地名（label-place）は、塗りと境界線を差し込む位置でもあるが、隠しても位置は変わらない。
+ *
+ * 出典の表示は、描いているものの提供元に差し替える。AttributionControl は、レイヤーの表示が変わった
+ * あとの描画で、options の customAttribution を読み直す。表示が1つも変わらないときは、提供元も変わらない。
+ */
+export const setBasemap = (
   handle: MapHandle,
-  visibility: BasemapVisibility,
+  selection: BasemapSelection,
 ): Result<void, MapError> => {
   try {
-    for (const { id, visible } of basemapLayerVisibility(handle.basemapLayers, visibility)) {
+    handle.attribution.options.customAttribution = attributionHtml(
+      basemapCredits(selection),
+      handle.attributionDetailsUrl,
+    );
+    for (const { id, visible } of basemapLayerVisibility(handle.basemapLayers, selection)) {
       handle.map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
     }
     return ok(undefined);
@@ -407,7 +560,10 @@ export const setBasemapVisibility = (
   }
 };
 
-/** 範囲が収まるように地図を動かす（docs/design/ui.md の「場所への移動」、D21） */
+/**
+ * 範囲が収まるように地図を動かす（docs/design/ui.md の「場所への移動」、D21）。
+ * 地図の向きは変えない。fitBounds の既定は北を上に戻すので、いまの向きを渡す
+ */
 export const fitBBox = (handle: MapHandle, bbox: BBox, padding = 32): void => {
   const [west, south, east, north] = bbox;
   handle.map.fitBounds(
@@ -415,7 +571,7 @@ export const fitBBox = (handle: MapHandle, bbox: BBox, padding = 32): void => {
       [west, south],
       [east, north],
     ],
-    { padding },
+    { padding, bearing: handle.map.getBearing() },
   );
 };
 

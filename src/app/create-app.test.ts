@@ -580,38 +580,77 @@ describe("地図の描画", () => {
 });
 
 describe("背景地図の表示", () => {
+  const ALL = { rail: true, road: true, river: true, label: true };
   const basemapCalls = (calls: readonly MapCall[]) =>
-    calls.flatMap((c) => (c.kind === "basemap" ? [c.visibility] : []));
+    calls.flatMap((c) => (c.kind === "basemap" ? [c.selection] : []));
 
-  it("地図をつなぐときにすべて表示を渡し、切り替えるとすぐに渡す。塗り分けは描き直さない", async () => {
+  it("地図をつなぐときに既定の背景地図を渡し、切り替えるとすぐに渡す。塗り分けは描き直さない", async () => {
     const { view, calls } = fakeMap();
     const app = createApp(testPorts({ map: view }));
     await app.boot();
     await app.attachMap("map");
     await settle();
-    expect(basemapCalls(calls)).toEqual([{ rail: true, road: true, river: true }]);
+    expect(basemapCalls(calls)).toEqual([{ id: "vector", visibility: ALL }]);
 
     const drawn = calls.length;
     app.dispatch({ type: "basemap-visibility-changed", group: "rail", visible: false });
+    app.dispatch({ type: "basemap-selected", id: "photo" });
     expect(calls.slice(drawn)).toEqual([
-      { kind: "basemap", visibility: { rail: false, road: true, river: true } },
+      { kind: "basemap", selection: { id: "vector", visibility: { ...ALL, rail: false } } },
+      { kind: "basemap", selection: { id: "photo", visibility: { ...ALL, rail: false } } },
     ]);
     await settle();
-    expect(calls.slice(drawn).map((c) => c.kind)).toEqual(["basemap"]);
+    expect(calls.slice(drawn).map((c) => c.kind)).toEqual(["basemap", "basemap"]);
 
-    // 同じ表示を選んでも渡し直さない
+    // 同じ表示、同じ背景地図を選んでも渡し直さない
     app.dispatch({ type: "basemap-visibility-changed", group: "rail", visible: false });
-    expect(basemapCalls(calls)).toHaveLength(2);
+    app.dispatch({ type: "basemap-selected", id: "photo" });
+    expect(basemapCalls(calls)).toHaveLength(3);
   });
 
-  it("地図をつなぐ前に切り替えた表示を、つないだ地図に渡す", async () => {
+  it("地図をつなぐ前に切り替えた背景地図を、つないだ地図に渡す", async () => {
     const { view, calls } = fakeMap();
     const app = createApp(testPorts({ map: view }));
     await app.boot();
     app.dispatch({ type: "basemap-visibility-changed", group: "river", visible: false });
+    app.dispatch({ type: "basemap-selected", id: "osm" });
     expect(calls).toEqual([]);
     await app.attachMap("map");
-    expect(basemapCalls(calls)).toEqual([{ rail: true, road: true, river: false }]);
+    expect(basemapCalls(calls)).toEqual([{ id: "osm", visibility: { ...ALL, river: false } }]);
+  });
+});
+
+describe("塗りの不透明度", () => {
+  const opacityCalls = (calls: readonly MapCall[]) =>
+    calls.flatMap((c) => (c.kind === "fill-opacity" ? [c.opacity] : []));
+
+  it("地図をつなぐときに不透明を渡し、選ぶとすぐに渡す。塗り分けは描き直さない", async () => {
+    const { view, calls } = fakeMap();
+    const app = createApp(testPorts({ map: view }));
+    await app.boot();
+    await app.attachMap("map");
+    await settle();
+    expect(opacityCalls(calls)).toEqual([1]);
+
+    const drawn = calls.length;
+    app.dispatch({ type: "fill-opacity-selected", opacity: 0.7 });
+    expect(calls.slice(drawn)).toEqual([{ kind: "fill-opacity", opacity: 0.7 }]);
+    await settle();
+    expect(calls.slice(drawn).map((c) => c.kind)).toEqual(["fill-opacity"]);
+
+    // 同じ値を選んでも渡し直さない
+    app.dispatch({ type: "fill-opacity-selected", opacity: 0.7 });
+    expect(opacityCalls(calls)).toEqual([1, 0.7]);
+  });
+
+  it("地図をつなぐ前に選んだ不透明度を、つないだ地図に渡す", async () => {
+    const { view, calls } = fakeMap();
+    const app = createApp(testPorts({ map: view }));
+    await app.boot();
+    app.dispatch({ type: "fill-opacity-selected", opacity: 0.4 });
+    expect(calls).toEqual([]);
+    await app.attachMap("map");
+    expect(opacityCalls(calls)).toEqual([0.4]);
   });
 });
 

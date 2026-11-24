@@ -53,6 +53,14 @@ export const parseOverlayGeoJson = (
 /** deck.gl の色。Rgba をそのまま渡すと readonly が外せないので、配列に写す */
 const deckColor = ([r, g, b, a]: Rgba): [number, number, number, number] => [r, g, b, a];
 
+/**
+ * 塗りの不透明度を、deck.gl のレイヤーの opacity にする。
+ * deck.gl 9.4.1 は、opacity を 1/2.2 乗してから色のアルファに掛ける（@deck.gl/core の layer-uniforms.js）。
+ * MapLibre の fill-opacity はそのまま掛けるので、同じ値でもメッシュのほうが濃くなる。
+ * 行政区域の塗りと同じ濃さになるよう、先に 2.2 乗しておく
+ */
+export const deckOpacity = (opacity: number): number => opacity ** 2.2;
+
 type MeshData = {
   readonly length: number;
   readonly startIndices: Uint32Array;
@@ -87,8 +95,13 @@ const sameMeshGeometry = <T>(next: T, prev?: T): boolean => {
 /**
  * メッシュの塗り分けのレイヤー。SolidPolygonLayer にバイナリ形式で渡す（src/core/mesh/geometry.ts）。
  * beforeId は、地図の中でこのレイヤーを差し込む位置（このレイヤーの直後に来る MapLibre のレイヤー）である。
+ * opacity は塗りの不透明度（0〜1）で、色の配列を送り直さずに変えられる。値なしのメッシュは透明のまま。
  */
-export const meshLayer = (spec: MeshLayerSpec, beforeId: string): SolidPolygonLayer<MeshData> => {
+export const meshLayer = (
+  spec: MeshLayerSpec,
+  beforeId: string,
+  opacity: number,
+): SolidPolygonLayer<MeshData> => {
   const { geometry } = spec;
   const data: MeshData = {
     length: geometry.length,
@@ -112,6 +125,7 @@ export const meshLayer = (spec: MeshLayerSpec, beforeId: string): SolidPolygonLa
       filled: true,
       extruded: false,
       visible: spec.visible,
+      opacity: deckOpacity(opacity),
       updateTriggers: { getFillColor: spec.colorKey },
     },
     placement,
@@ -185,12 +199,14 @@ export const geoJsonLayer = ({ spec, data }: GeoJsonOverlay): GeoJsonLayer =>
 /**
  * 地図に重ねるレイヤーを、下から順に並べる。
  * メッシュは meshBeforeId の位置（背景地図の道路と境界線の下）に、自前データは地図のいちばん上に描く。
+ * meshOpacity はメッシュの塗りだけに効き、自前データには効かない。
  */
 export const overlayDeckLayers = (
   layers: OverlayLayers,
   meshBeforeId: string,
+  meshOpacity: number,
 ): readonly (SolidPolygonLayer<MeshData> | ScatterplotLayer<PointData> | GeoJsonLayer)[] => [
-  ...(layers.mesh === null ? [] : [meshLayer(layers.mesh, meshBeforeId)]),
+  ...(layers.mesh === null ? [] : [meshLayer(layers.mesh, meshBeforeId, meshOpacity)]),
   ...layers.geoJsons.map(geoJsonLayer),
   ...layers.points.map(pointLayer),
 ];

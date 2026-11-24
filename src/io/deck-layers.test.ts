@@ -59,7 +59,7 @@ const polygon = geoJson(
 describe("meshLayer", () => {
   it("形と色の配列をバイナリ形式で渡し、色の鍵を updateTriggers にする", () => {
     const spec = meshSpec([0.25, 0.55], "aging_rate/2050");
-    const layer = meshLayer(spec, "road");
+    const layer = meshLayer(spec, "road", 1);
     expect(layer.props.data).toEqual({
       length: 2,
       startIndices: geometry.startIndices,
@@ -71,19 +71,29 @@ describe("meshLayer", () => {
     });
     expect(layer.props._normalize).toBe(false);
     expect(layer.props.updateTriggers).toEqual({ getFillColor: "aging_rate/2050" });
-    expect(layer.props).toMatchObject({ id: "mesh", beforeId: "road", visible: true });
+    expect(layer.props).toMatchObject({ id: "mesh", beforeId: "road", visible: true, opacity: 1 });
+  });
+
+  it("不透明度は、色の配列と色の鍵を変えずに渡す", () => {
+    const spec = meshSpec([0.25, 0.55], "aging_rate/2050");
+    const opaque = meshLayer(spec, "road", 1);
+    const faint = meshLayer(spec, "road", 0.4);
+    // deck.gl は opacity を 1/2.2 乗して掛けるので、掛かる値が 0.4 になる
+    expect(faint.props.opacity ** (1 / 2.2)).toBeCloseTo(0.4, 12);
+    expect(faint.props.updateTriggers).toEqual(opaque.props.updateTriggers);
+    expect(faint.props.dataComparator?.(faint.props.data, opaque.props.data)).toBe(true);
   });
 
   it("同じ形から作った data は、色が違っても変わっていないとみなす", () => {
-    const a = meshLayer(meshSpec([0.25, 0.55], "a"), "road");
-    const b = meshLayer(meshSpec([0.75, 0.15], "b"), "road");
+    const a = meshLayer(meshSpec([0.25, 0.55], "a"), "road", 1);
+    const b = meshLayer(meshSpec([0.75, 0.15], "b"), "road", 1);
     expect(b.props.dataComparator?.(b.props.data, a.props.data)).toBe(true);
   });
 
   it("別の形から作った data は、変わったとみなす", () => {
     const other = buildMeshGeometry([53394611, 53394612]);
-    const a = meshLayer(meshSpec([0.25, 0.55], "a"), "road");
-    const b = meshLayer(meshSpec([0.25, 0.55], "a", other), "road");
+    const a = meshLayer(meshSpec([0.25, 0.55], "a"), "road", 1);
+    const b = meshLayer(meshSpec([0.25, 0.55], "a", other), "road", 1);
     expect(b.props.dataComparator?.(b.props.data, a.props.data)).toBe(false);
   });
 });
@@ -133,15 +143,14 @@ describe("overlayDeckLayers", () => {
     const points = [pointLayerSpec("p", [35], [139], style)];
     const geoJsons = [{ spec: geoJsonLayerSpec("g", "polygon", style), data: polygon }];
     const mesh = meshSpec([0.25, 0.55], "a");
-    expect(overlayDeckLayers({ mesh, points, geoJsons }, "road").map((l) => l.id)).toEqual([
+    expect(overlayDeckLayers({ mesh, points, geoJsons }, "road", 1).map((l) => l.id)).toEqual([
       "mesh",
       "g",
       "p",
     ]);
-    expect(overlayDeckLayers({ mesh: null, points, geoJsons }, "road").map((l) => l.id)).toEqual([
-      "g",
-      "p",
-    ]);
+    expect(overlayDeckLayers({ mesh: null, points, geoJsons }, "road", 1).map((l) => l.id)).toEqual(
+      ["g", "p"],
+    );
   });
 });
 
@@ -155,6 +164,7 @@ describe("picking の対象", () => {
         geoJsons: [{ spec: geoJsonLayerSpec("g", "line", style), data: polygon }],
       },
       "road",
+      1,
     );
     expect(layers.map((l) => [l.id, l.props.pickable])).toEqual([
       ["mesh", false],
