@@ -11,6 +11,14 @@ import {
 } from "../indicators/definitions";
 import type { JoinMeasure } from "../join/aggregate";
 import {
+  type PrefCode,
+  type Region,
+  regionOf,
+  sameRegion,
+  toggleRegion,
+  WHOLE_COUNTRY,
+} from "../region/region";
+import {
   type BasemapId,
   type BasemapLayerGroup,
   type BasemapSelection,
@@ -90,6 +98,11 @@ export type AppState = {
   readonly basemap: BasemapSelection;
   /** 塗り分けの不透明度。再読み込みで既定（不透明）に戻る */
   readonly fillOpacity: FillOpacity;
+  /**
+   * 地域モードの地域（表示する都道府県）。空なら全国。
+   * 保存はしないが、URL の # 以降に載せるので、再読み込みでは URL の値に戻る（region/hash.ts）
+   */
+  readonly region: Region;
 };
 
 /** 既定の指標。Figma の「01 地図（基本）」と同じ、2050 年の高齢化率のメッシュ */
@@ -105,6 +118,7 @@ export const INITIAL_STATE: AppState = {
   nextNoticeId: 1,
   basemap: DEFAULT_BASEMAP,
   fillOpacity: DEFAULT_FILL_OPACITY,
+  region: WHOLE_COUNTRY,
 };
 
 export type Action =
@@ -130,7 +144,11 @@ export type Action =
       readonly group: BasemapLayerGroup;
       readonly visible: boolean;
     }
-  | { readonly type: "fill-opacity-selected"; readonly opacity: FillOpacity };
+  | { readonly type: "fill-opacity-selected"; readonly opacity: FillOpacity }
+  /** 地域をまとめて決める。URL から読んだときと、全国に戻すとき */
+  | { readonly type: "region-selected"; readonly region: Region }
+  /** 都道府県を1つ、地域に入れるか外す */
+  | { readonly type: "region-toggled"; readonly code: PrefCode; readonly selected: boolean };
 
 const UNIT_TARGET: Readonly<Record<Unit, JoinTarget>> = {
   mesh: "mesh",
@@ -315,6 +333,14 @@ export const reduce = (state: AppState, action: Action): AppState => {
       return state.fillOpacity === action.opacity
         ? state
         : { ...state, fillOpacity: action.opacity };
+    case "region-selected": {
+      const region = regionOf(action.region);
+      return sameRegion(state.region, region) ? state : { ...state, region };
+    }
+    case "region-toggled": {
+      const region = toggleRegion(state.region, action.code, action.selected);
+      return sameRegion(state.region, region) ? state : { ...state, region };
+    }
     default: {
       const unreachable: never = action;
       return unreachable;

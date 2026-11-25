@@ -6,15 +6,15 @@ describe("dataUrl", () => {
   const base = "https://oxon-1011.github.io/RightsizingJPMap/";
 
   it("アプリの base の下の data/<版>/ を指す", () => {
-    expect(DATA_DIR).toBe("data/v1/");
+    expect(DATA_DIR).toBe("data/v2/");
     expect(dataUrl(base, DATA_FILES.meshIndicators)).toBe(
-      "https://oxon-1011.github.io/RightsizingJPMap/data/v1/mesh_indicators.parquet",
+      "https://oxon-1011.github.io/RightsizingJPMap/data/v2/mesh_indicators.parquet",
     );
   });
 
   it("都道府県ごとの admin_geom のファイルも組み立てられる", () => {
     expect(dataUrl(base, adminGeomFile("31"))).toBe(
-      "https://oxon-1011.github.io/RightsizingJPMap/data/v1/admin_geom/31.parquet",
+      "https://oxon-1011.github.io/RightsizingJPMap/data/v2/admin_geom/31.parquet",
     );
   });
 

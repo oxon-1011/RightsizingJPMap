@@ -8,6 +8,7 @@ import { ACCEPTANCE_URL } from "../app/links";
 import { searchPlaces } from "../core/places/search";
 import { selectableYears } from "../core/state/state";
 import { AddDataButton } from "./AddDataButton";
+import { CommandPalette } from "./CommandPalette";
 import { DropOverlay } from "./DropOverlay";
 import { hasFiles, nextDragDepth } from "./file-drag";
 import { HoverCard } from "./HoverCard";
@@ -16,7 +17,8 @@ import { isMacPlatform, isPlaceSearchShortcut } from "./keyboard";
 import { LayerPanel } from "./LayerPanel";
 import { MapSettings } from "./MapSettings";
 import { NoticeList } from "./NoticeList";
-import { PlaceSearch } from "./PlaceSearch";
+import { paletteItems } from "./palette";
+import { RegionPicker } from "./RegionPicker";
 import { YearSlider } from "./YearSlider";
 import { trackYears } from "./year-slider";
 
@@ -53,8 +55,10 @@ export const App = () => {
   const runtime = useAppStore((s) => s.runtime);
   const [dragDepth, setDragDepth] = useState(0);
   const [search, setSearch] = useState<SearchState>(CLOSED_SEARCH);
+  // 地域を選ぶ部品の開閉。パネルのボタンと、コマンドパレットの操作の両方から開く
+  const [regionOpen, setRegionOpen] = useState(false);
 
-  // Ctrl（macOS では Command）+ K で場所への移動の入力欄を開く。places.json は初めて開いたときに読む
+  // Ctrl（macOS では Command）+ K でコマンドパレットを開く。places.json は初めて開いたときに読む
   useEffect(() => {
     const isMac = isMacPlatform(navigator.platform);
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -109,6 +113,7 @@ export const App = () => {
   // app.placeCandidates と同じ計算。runtime.places から作り、読み終えたときに候補が描き直されるようにする
   const { places } = runtime;
   const candidates = places.kind === "ready" ? searchPlaces(places.index, search.query) : [];
+  const items = paletteItems(search.query, candidates);
 
   return (
     <main className="relative h-dvh overflow-hidden bg-solid-gray-100 font-sans">
@@ -122,6 +127,17 @@ export const App = () => {
           indicator={state.indicator}
           datasets={state.datasets}
           joinedClassification={runtime.joinedClassification}
+          regionPicker={
+            <RegionPicker
+              region={state.region}
+              open={regionOpen}
+              onOpenChange={setRegionOpen}
+              onToggle={(code, selected) =>
+                app.dispatch({ type: "region-toggled", code, selected })
+              }
+              onClear={() => app.dispatch({ type: "region-selected", region: [] })}
+            />
+          }
           settings={
             <MapSettings
               basemap={state.basemap}
@@ -171,16 +187,20 @@ export const App = () => {
       />
 
       {search.open && (
-        <PlaceSearch
+        <CommandPalette
           query={search.query}
-          candidates={candidates}
+          items={items}
           activeIndex={search.activeIndex}
           loading={places.kind === "loading"}
           onQueryChange={(query) => setSearch({ open: true, query, activeIndex: -1 })}
           onActiveIndexChange={(activeIndex) => setSearch((s) => ({ ...s, activeIndex }))}
-          onSelect={(place) => {
-            app.moveToPlace(place);
+          onSelect={(item) => {
             setSearch(CLOSED_SEARCH);
+            if (item.kind === "place") {
+              app.moveToPlace(item.candidate.place);
+            } else {
+              setRegionOpen(true);
+            }
           }}
           onClose={() => setSearch(CLOSED_SEARCH)}
         />

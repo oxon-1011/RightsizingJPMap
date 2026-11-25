@@ -19,6 +19,7 @@ import {
   fakeTables,
   recordStorage,
   settle,
+  TOTTORI_BBOX,
   testPorts,
 } from "./test-fakes";
 
@@ -444,7 +445,7 @@ describe("地図の描画", () => {
     expect(mesh.id).toBe(MESH_LAYER_ID);
     // 鳥取県のテスト用データは 1,763 メッシュ
     expect(mesh.geometry.length).toBe(1763);
-    expect(mesh.colorKey).toBe("mesh/2050/base/aging_rate");
+    expect(mesh.colorKey).toBe("all/mesh/2050/base/aging_rate");
     expect(mesh.visible).toBe(true);
     expect(lastAdmin(calls).visible).toBe(false);
   });
@@ -456,7 +457,7 @@ describe("地図の描画", () => {
     await settle();
     const after = meshOf(calls);
     expect(after.geometry).toBe(before.geometry);
-    expect(after.colorKey).toBe("mesh/2030/base/aging_rate");
+    expect(after.colorKey).toBe("all/mesh/2030/base/aging_rate");
   });
 
   it("市区町村に切り替えると、19 の市町村を塗り、メッシュは形を残して隠す", async () => {
@@ -481,8 +482,8 @@ describe("地図の描画", () => {
     const keys = calls
       .filter((c) => c.kind === "overlay")
       .map((c) => (c.kind === "overlay" ? c.layers.mesh?.colorKey : null));
-    expect(keys.at(-1)).toBe("mesh/2040/base/aging_rate");
-    expect(keys).not.toContain("mesh/2030/base/aging_rate");
+    expect(keys.at(-1)).toBe("all/mesh/2040/base/aging_rate");
+    expect(keys).not.toContain("all/mesh/2030/base/aging_rate");
   });
 
   it("点のデータを重ね、表示を変えても座標の配列とメッシュの指定は作り直さない", async () => {
@@ -524,7 +525,7 @@ describe("地図の描画", () => {
       indicator: { ...count, perPopulation: { base: "p65", per: 1000 } },
     });
     await settle();
-    expect(meshOf(calls).colorKey).toBe("mesh/2050/joined/dataset-1/count/p65:1000");
+    expect(meshOf(calls).colorKey).toBe("all/mesh/2050/joined/dataset-1/count/p65:1000");
 
     app.dispatch({ type: "indicator-selected", indicator: { kind: "base", id: "pop" } });
     await settle();
@@ -573,11 +574,137 @@ describe("地図の描画", () => {
     await settle();
     await app.removeDataset("dataset-1");
     await settle();
-    expect(meshOf(calls).colorKey).toBe("mesh/2050/base/aging_rate");
+    expect(meshOf(calls).colorKey).toBe("all/mesh/2050/base/aging_rate");
     expect(lastOverlay(calls).points).toEqual([]);
     expect(noticeKinds(app)).toContain("indicator-reset");
   });
 });
+
+describe("地域モード", () => {
+  const start = async (options: Parameters<typeof testPorts>[0] = {}) => {
+    const { view, calls } = fakeMap();
+    const ports = testPorts({ ...options, map: view });
+    const app = createApp(ports);
+    await app.boot();
+    await app.attachMap("map");
+    await settle();
+    return { app, calls, ports };
+  };
+  const fits = (calls: readonly MapCall[]) => calls.filter((c) => c.kind === "fit");
+
+  it("URL に地域があれば、その都道府県のファイルだけを読んで塗り、地図を地域の範囲に合わせる", async () => {
+    const { app, calls, ports } = await start({ hash: "#pref=31" });
+    expect(app.store.getState().state.region).toEqual(["31"]);
+    const mesh = meshOf(calls);
+    expect(mesh.geometry.length).toBe(1763);
+    expect(mesh.colorKey).toBe("31/mesh/2050/base/aging_rate");
+    // 全国のファイルは開かない
+    expect(ports.openedParquet).toEqual(["mesh_pref/31.parquet"]);
+    expect(fits(calls)).toEqual([{ kind: "fit", bbox: TOTTORI_BBOX }]);
+    expect(ports.hash()).toBe("#pref=31");
+    expect(ports.errors).toEqual([]);
+  });
+
+  it("URL に地図の位置もあれば、地図を動かさない", async () => {
+    const { app, calls } = await start({ hash: "#map=9/35.4/134&pref=31" });
+    expect(app.store.getState().state.region).toEqual(["31"]);
+    expect(fits(calls)).toEqual([]);
+  });
+
+  it("URL の地域を読めなければ全国にし、URL から取り除く。コードの順はそろえる", async () => {
+    const invalid = await start({ hash: "#map=9/35.4/134&pref=31,48" });
+    expect(invalid.app.store.getState().state.region).toEqual([]);
+    expect(invalid.ports.hash()).toBe("#map=9/35.4/134");
+    expect(invalid.ports.openedParquet).toEqual(["mesh_indicators.parquet"]);
+    expect(createAppHash("#pref=31,20")).toBe("#pref=20,31");
+  });
+
+  it("画面で都道府県を選ぶと、URL に載せ、塗り直し、地図を合わせる。全国に戻すと URL から取り除く", async () => {
+    const { app, calls, ports } = await start({ hash: "#map=9/35.4/134" });
+    const national = meshOf(calls);
+    app.dispatch({ type: "region-toggled", code: "31", selected: true });
+    await settle();
+    expect(ports.hash()).toBe("#map=9/35.4/134&pref=31");
+    const regional = meshOf(calls);
+    expect(regional.colorKey).toBe("31/mesh/2050/base/aging_rate");
+    expect(regional.geometry).not.toBe(national.geometry);
+    expect(fits(calls)).toEqual([{ kind: "fit", bbox: TOTTORI_BBOX }]);
+
+    app.dispatch({ type: "region-selected", region: [] });
+    await settle();
+    expect(ports.hash()).toBe("#map=9/35.4/134");
+    expect(meshOf(calls).colorKey).toBe("all/mesh/2050/base/aging_rate");
+    // 全国に戻すときは、地図を動かさない
+    expect(fits(calls)).toHaveLength(1);
+  });
+
+  it("利用者が URL を書き換えたら地域を変えるが、URL は書き直さず、地図も動かさない", async () => {
+    const { app, calls, ports } = await start();
+    ports.changeHash("#pref=31&x=1");
+    await settle();
+    expect(app.store.getState().state.region).toEqual(["31"]);
+    expect(meshOf(calls).colorKey).toBe("31/mesh/2050/base/aging_rate");
+    expect(ports.hash()).toBe("#pref=31&x=1");
+    expect(fits(calls)).toEqual([]);
+
+    ports.changeHash("#x=1");
+    await settle();
+    expect(app.store.getState().state.region).toEqual([]);
+  });
+
+  it("市区町村では、地域の外の区域を透明にし、ホバーのカードも出さない", async () => {
+    const { app, calls } = await start({ hash: "#map=9/35.4/134&pref=31" });
+    app.dispatch({ type: "unit-selected", unit: "municipality" });
+    await settle();
+    const inside = lastAdmin(calls);
+    expect(inside.colors.size).toBe(19);
+    expect([...inside.colors.values()].every(([, , , alpha]) => alpha > 0)).toBe(true);
+
+    app.dispatch({ type: "region-selected", region: ["32"] });
+    await settle();
+    // テスト用の値は鳥取県だけなので、島根県を選ぶと、どの区域も地域の外になる
+    const outside = lastAdmin(calls);
+    expect(outside.colors.size).toBe(19);
+    expect([...outside.colors.values()].every(([, , , alpha]) => alpha === 0)).toBe(true);
+  });
+
+  it("別の地域のメッシュの形は、市区町村を塗っているあいだ持ち続けない", async () => {
+    const { app, calls } = await start({ hash: "#map=9/35.4/134" });
+    app.dispatch({ type: "unit-selected", unit: "municipality" });
+    await settle();
+    expect(meshOf(calls).visible).toBe(false);
+    app.dispatch({ type: "region-selected", region: ["31"] });
+    await settle();
+    const last = calls.findLast((c) => c.kind === "overlay");
+    expect(last?.kind === "overlay" && last.layers.mesh).toBeNull();
+  });
+
+  it("結合した指標は、地域のメッシュだけを塗り、区切りを地域の値で作る", async () => {
+    const { app, calls } = await start({ hash: "#map=9/35.4/134&pref=31" });
+    await app.importFiles([file(POINTS_GEOJSON, "施設.geojson")]);
+    app.dispatch({
+      type: "indicator-selected",
+      indicator: {
+        kind: "joined",
+        datasetId: "dataset-1",
+        measure: { kind: "count" },
+        perPopulation: null,
+      },
+    });
+    await settle();
+    // 鳥取駅と米子駅のメッシュは、どちらも鳥取県のファイルにある
+    expect(meshOf(calls).geometry.length).toBe(2);
+    expect(meshOf(calls).colorKey).toBe("31/mesh/2050/joined/dataset-1/count/none");
+    expect(app.store.getState().runtime.joinedClassification).not.toBeNull();
+  });
+});
+
+/** 起動だけをして、書き直された URL の # 以降を返す */
+const createAppHash = (hash: string): string => {
+  const ports = testPorts({ hash });
+  createApp(ports);
+  return ports.hash();
+};
 
 describe("背景地図の表示", () => {
   const ALL = { rail: true, road: true, river: true, label: true };
@@ -719,7 +846,7 @@ describe("目録から復元した表の指標", () => {
     });
     await settle();
     expect(meshOf(calls).geometry.length).toBe(1763);
-    expect(meshOf(calls).colorKey).toBe("mesh/2050/joined/meshes/count/none");
+    expect(meshOf(calls).colorKey).toBe("all/mesh/2050/joined/meshes/count/none");
   });
 });
 

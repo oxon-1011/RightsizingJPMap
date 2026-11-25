@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { indexMeshes } from "../join/per-population";
 import { meshCodeToBounds } from "../mesh/mesh-code";
+import type { Region } from "../region/region";
 import type { IndicatorSelection } from "../state/state";
 import {
   type ChoroplethHoverData,
@@ -234,7 +235,7 @@ describe("hoverContent のメッシュ", () => {
   });
 });
 
-const municipalData = (): HoverData => ({
+const municipalData = (region: Region = []): HoverData => ({
   choropleth: {
     unit: "municipality",
     year: 2050,
@@ -259,11 +260,18 @@ const municipalData = (): HoverData => ({
       ]),
       prefectures: new Map([["31", "鳥取県"]]),
     },
+    region,
   },
   layers: new Map(),
 });
 
 describe("hoverContent の市区町村", () => {
+  it("地域の外の区域には出さない", () => {
+    const hit = hitAt(TOKYO, { municipalityCode: "31201" });
+    expect(hoverContent(municipalData(["31"]), hit)).toMatchObject({ code: "31201" });
+    expect(hoverContent(municipalData(["32"]), hit)).toBeNull();
+  });
+
   it("区域の名前と都道府県、値、その年の総人口を出す", () => {
     const hit = hitAt(TOKYO, { municipalityCode: "31201" });
     expect(hoverContent(municipalData(), hit)).toEqual({

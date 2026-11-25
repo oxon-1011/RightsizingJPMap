@@ -42,7 +42,7 @@ export type HoverStore = StoreApi<HoverStoreState>;
 /** 地図に渡した塗り分けと、それを作った状態 */
 export type AppliedChoropleth = {
   readonly choropleth: Choropleth;
-  readonly state: Pick<AppState, "unit" | "year" | "indicator">;
+  readonly state: Pick<AppState, "unit" | "year" | "indicator" | "region">;
 };
 
 /** カードの中身を作る材料。地図を描き直すたびに app が渡す */
@@ -93,8 +93,8 @@ const meshData = async (
   choropleth: Extract<Choropleth, { readonly unit: "mesh" }>,
   datasetName: string | null,
 ): Promise<Result<ChoroplethHoverData, AppError>> => {
-  const { year, indicator } = applied.state;
-  const mesh = await sources.base.mesh();
+  const { year, indicator, region } = applied.state;
+  const mesh = await sources.base.mesh(region);
   if (!mesh.ok) {
     return mesh;
   }
@@ -104,7 +104,7 @@ const meshData = async (
   const names = [
     ...new Set([...(second === null ? [] : [second.value, ...second.masked]), ...columns.masked]),
   ];
-  const read = await sources.base.meshColumns(names);
+  const read = await sources.base.meshColumns(region, names);
   if (!read.ok) {
     return read;
   }
@@ -165,7 +165,7 @@ const municipalData = async (
   choropleth: Extract<Choropleth, { readonly unit: "municipality" }>,
   datasetName: string | null,
 ): Promise<Result<ChoroplethHoverData, AppError>> => {
-  const { year, indicator } = applied.state;
+  const { year, indicator, region } = applied.state;
   const municipal = await sources.base.municipal();
   if (!municipal.ok) {
     return municipal;
@@ -194,6 +194,7 @@ const municipalData = async (
     values: choropleth.values,
     population,
     names: municipal.value.names,
+    region,
   });
 };
 

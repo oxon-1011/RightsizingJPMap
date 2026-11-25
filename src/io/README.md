@@ -16,10 +16,14 @@ hyparquet、DuckDB-WASM、OPFS、Web Locks、MapLibre、deck.gl の呼び出し�
 | `map.ts` | MapLibre GL JS、pmtiles のプロトコル、deck.gl の MapboxOverlay | `startMap`、`stopMap`、`setAdminFill`、`setOverlayLayers`、`setFillOpacity`、`setBasemap`、`fitBBox`、`watchPointer` |
 | `deck-layers.ts` | deck.gl のレイヤー | `parseOverlayGeoJson`（レイヤーの組み立ては `setOverlayLayers` が呼ぶ） |
 | `bytes.ts` | `fetch`、`Blob.arrayBuffer` | `fetchBytes`、`readBlobBytes` |
+| `hash.ts` | `window.location.hash`、`history.replaceState`、`hashchange` | `readHash`、`replaceHash`、`watchHash` |
 
 ### parquet.ts
 
 `openParquetUrl` は先頭の2バイトの Range リクエストで大きさを知り、末尾のメタデータだけを Range リクエストで取得する。
+末尾は、まず 32KB（`URL_FOOTER_FETCH_BYTES`）を取得する。
+hyparquet の既定の 512KB では、都道府県ごとのメッシュのファイル（0.2〜2.5MB）で、指標の列より大きな通信になるからである。
+生成物のメタデータは 6〜11KB で、32KB より大きければ hyparquet が足りない分を取り直す。
 HEAD リクエストは使わない。
 GitHub Pages は、gzip を受け付ける要求に gzip で返し、HEAD の Content-Length も圧縮後の大きさになるからである。
 ブラウザは Range を付けた要求には `Accept-Encoding: identity` を付けるので、Range リクエストの応答は圧縮されない。
@@ -31,6 +35,13 @@ Range リクエストに 206 が返らないサーバーでは、全体を読ま
 `ColumnArray` に変換できない型は `unsupported` とし、その列は読まない。
 数値の NULL は NaN にする。
 UINTEGER、BOOLEAN、VARCHAR の列は NULL を表せないので、NULL があれば最初の行の番号を付けて失敗を返す。
+
+### hash.ts
+
+URL の `#` 以降を読み書きする。
+値の形は core が決め（`position/hash.ts`、`region/hash.ts`）、ここは読むことと書くことだけをする。
+書くときは `history.replaceState` を使い、履歴を増やさない。
+地図の位置は `map.ts` が同じ `#` 以降に書くので、どちらも、ほかの名前の値を残して書く。
 
 ### bytes.ts
 

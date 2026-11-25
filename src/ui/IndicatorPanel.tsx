@@ -2,6 +2,7 @@
 // 見出しや説明文は置かない。自前データの指標を選んだときだけ、分母のセレクトボックスを出す（D24）。
 // 単位の切り替えの右に、地図の設定を開く歯車（MapSettings.tsx）を置く（Figma の画面にはまだない）。
 // 歯車と設定は settings で受け取る。設定はこのパネルの右に開くので、位置の基準になるよう section を relative にする。
+// 凡例の下に、地域を選ぶボタン（RegionPicker.tsx）を置く。地域の一覧も、このパネルの右に開く。
 
 import type { ReactNode } from "react";
 import type { Classification } from "../core/classify/classify";
@@ -30,6 +31,8 @@ type IndicatorPanelProps = {
    * まだ作れていなければ null で、凡例を出さない。ベースデータの指標では使わない。
    */
   joinedClassification: Classification | null;
+  /** 地域を選ぶボタン（RegionPicker）。凡例の下に置く */
+  regionPicker: ReactNode;
   /** 地図の設定の歯車（MapSettings）。単位の切り替えの右に置く */
   settings: ReactNode;
   onIndicatorChange: (indicator: IndicatorSelection) => void;
@@ -62,6 +65,7 @@ export const IndicatorPanel = ({
   indicator,
   datasets,
   joinedClassification,
+  regionPicker,
   settings,
   onIndicatorChange,
   onUnitChange,
@@ -125,6 +129,7 @@ export const IndicatorPanel = ({
         </Select>
       )}
       {legend !== null && <Legend classification={legend.classification} scale={legend.scale} />}
+      {regionPicker}
       <div className="flex w-full items-center justify-between">
         <UnitSwitch unit={unit} onChange={onUnitChange} />
         {settings}

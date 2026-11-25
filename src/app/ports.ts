@@ -115,6 +115,12 @@ export type AppPorts<Container> = {
   readonly readBlob: (blob: Blob) => Promise<Result<Uint8Array, FetchError>>;
   readonly tables: TableEngine;
   readonly startMap: (container: Container) => Promise<Result<MapView, MapError>>;
+  /** URL の # 以降（先頭の # を含む。なければ空の文字列） */
+  readonly readHash: () => string;
+  /** URL の # 以降を置き換える。履歴は増やさない。空の文字列なら # 以降を取り除く */
+  readonly replaceHash: (hash: string) => void;
+  /** 利用者が URL の # 以降を書き換えたときに知らせる。返した関数で知らせるのをやめる */
+  readonly watchHash: (listener: (hash: string) => void) => () => void;
   /** 取り込んだ日時（ISO 8601）。core は時刻を読まないので app が渡す */
   readonly now: () => string;
   /** データの識別子（core の isDatasetId を満たすもの） */

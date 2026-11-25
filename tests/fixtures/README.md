@@ -5,7 +5,7 @@
 
 | ファイル | 内容 |
 |---|---|
-| `mesh_indicators.tottori.parquet` | 鳥取県の市町村の `shicode` を持つメッシュ（県境のメッシュを含む）の `mesh_indicators.parquet`。1,763 行 |
+| `mesh_indicators.tottori.parquet` | 鳥取県の市町村の `shicode` を持つメッシュ（県境のメッシュを含む）の `mesh_indicators.parquet`。1,763 行。地域モードが読む `mesh_pref/31.parquet` と同じ行なので、テストではその代わりにも使う |
 | `municipal_indicators.tottori.parquet` | 鳥取県（`31000`）と県内の 19 市町村の `municipal_indicators.parquet`。7 時点で 140 行 |
 | `admin_geom.tottori.parquet` | 鳥取県の `admin_geom/31.parquet` をそのまま写したもの（GeoParquet 1.1）。19 行 |
 

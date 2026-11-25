@@ -1,6 +1,7 @@
 // 画面が呼ぶ手続きをまとめる。ストア（store.ts）を持ち、io（ports.ts の口）と core の関数をつなぐ。
 // 状態の判断は core の reduce が行い、ここでは副作用の順序を決めて、結果を reduce に渡す。
-// 単位、指標、年、データが変わると、ストアの購読から地図を描き直す。背景地図の表示も、購読から地図に渡す。
+// 単位、指標、年、データ、地域が変わると、ストアの購読から地図を描き直す。背景地図の表示も、購読から地図に渡す。
+// 地域は URL の # 以降とそろえる。起動のときに URL から読み、画面で変えたら URL に書く。
 
 import { isLargeFile } from "../core/accept/file";
 import type { Place } from "../core/data/schema";
@@ -11,6 +12,8 @@ import {
   parsePlaces,
   searchPlaces,
 } from "../core/places/search";
+import { formatRegionHash, hasHashParam, parseRegionHash } from "../core/region/hash";
+import { type Region, regionBBox, regionKey, WHOLE_COUNTRY } from "../core/region/region";
 import { adminFillSpec } from "../core/render/admin";
 import { type MeshLayerSpec, meshLayerSpec } from "../core/render/mesh";
 import { err, ok, type Result } from "../core/result";
@@ -22,6 +25,7 @@ import { createPointAssigner } from "./assign";
 import { createBaseData } from "./base-data";
 import { type Choropleth, choroplethKey, computeChoropleth } from "./choropleth";
 import { createDatasetCache } from "./datasets";
+import { POSITION_HASH_NAME, REGION_HASH_NAME } from "./hash-names";
 import { type AppliedChoropleth, createHover, type HoverStore } from "./hover";
 import { type ImportFile, readImportFile } from "./import";
 import { createOverlayBuilder } from "./overlays";
@@ -40,7 +44,9 @@ export type UiAction = Extract<
       | "notice-dismissed"
       | "basemap-selected"
       | "basemap-visibility-changed"
-      | "fill-opacity-selected";
+      | "fill-opacity-selected"
+      | "region-selected"
+      | "region-toggled";
   }
 >;
 
@@ -53,7 +59,7 @@ export type App<Container> = {
   /** 地図を作って描く。前の地図があれば片付ける */
   readonly attachMap: (container: Container) => Promise<Result<void, AppError>>;
   readonly detachMap: () => void;
-  /** 単位、年、指標、背景地図、塗りの不透明度の切り替えと、通知を閉じる操作。地図はストアの購読から描き直す */
+  /** 単位、年、指標、背景地図、塗りの不透明度、地域の切り替えと、通知を閉じる操作。地図はストアの購読から描き直す */
   readonly dispatch: (action: UiAction) => void;
   /** ファイルを1つずつ取り込む。拒否は通知に出す */
   readonly importFiles: (files: readonly ImportFile[]) => Promise<void>;
@@ -97,6 +103,23 @@ export const createApp = <Container>(
   const datasets = createDatasetCache({ storage: () => storage, assignPoints });
   const overlays = createOverlayBuilder({ datasets, report });
   const hover = createHover({ base, datasets, report });
+
+  // 地域。URL の # 以降にあれば、地図を作る前に状態に入れる。全国のファイルを読まずに済ませるためである
+  const initialHash = ports.readHash();
+  const initialRegion = parseRegionHash(initialHash, REGION_HASH_NAME);
+  if (initialRegion !== null) {
+    dispatch({ type: "region-selected", region: initialRegion });
+  }
+  // 読めなかった値を取り除き、コードの順をそろえる。URL と画面の地域を食い違わせない
+  ports.replaceHash(formatRegionHash(initialHash, REGION_HASH_NAME, getState().region));
+  /**
+   * 起動のときに、地図を地域の範囲に合わせるか。URL に地域があり、地図の位置がないときだけ合わせる。
+   * 位置があるときは、io の startMap がその位置を映す
+   */
+  let fitsRegionOnAttach =
+    initialRegion !== null &&
+    initialRegion.length > 0 &&
+    !hasHashParam(initialHash, POSITION_HASH_NAME);
 
   // 目録
 
@@ -191,6 +214,8 @@ export const createApp = <Container>(
   let appliedKey: string | null = null;
   /** 地図に渡したメッシュのレイヤー。行政区域を塗っているあいだも、隠して持ち続ける */
   let meshLayer: MeshLayerSpec | null = null;
+  /** meshLayer を作った地域（core の regionKey）。地域が変わったら、隠したレイヤーは持ち続けない */
+  let meshLayerRegion: string | null = null;
   /** 地図に渡した塗り分けと、それを作った状態。ホバーのカードの値を引くのに使う */
   let applied: AppliedChoropleth | null = null;
   let unwatchPointer: (() => void) | null = null;
@@ -211,12 +236,17 @@ export const createApp = <Container>(
         colorKey: key,
         visible: true,
       });
+      meshLayerRegion = regionKey(state.region);
       const hidden = view.setAdminFill(adminFillSpec(new Map(), choropleth.classification, false));
       if (!hidden.ok) {
         report({ kind: "map", error: hidden.error });
       }
     } else {
-      meshLayer = meshLayer === null ? null : { ...meshLayer, visible: false };
+      // 別の地域のメッシュの形は、戻ったときに使えないので捨てる
+      meshLayer =
+        meshLayer === null || meshLayerRegion !== regionKey(state.region)
+          ? null
+          : { ...meshLayer, visible: false };
       const filled = view.setAdminFill(
         adminFillSpec(choropleth.values, choropleth.classification, true),
       );
@@ -276,6 +306,37 @@ export const createApp = <Container>(
     void render();
   };
 
+  /** 地図を、地域の都道府県の範囲に合わせる。全国のときは動かさない */
+  const fitRegion = async (view: MapView, region: Region): Promise<boolean> => {
+    if (region.length === 0) {
+      return false;
+    }
+    const index = await base.adminGeomIndex();
+    if (!index.ok) {
+      report(index.error);
+      return false;
+    }
+    const bbox = regionBBox(index.value, region);
+    // 読んでいるあいだに地図が片付けられたか、地域が変わっていたら、合わせない
+    if (bbox === null || map !== view || getState().region !== region) {
+      return false;
+    }
+    view.fitBBox(bbox);
+    return true;
+  };
+
+  /** URL を読んで地域を変えているあいだは真。URL を書き直さず、地図も動かさない */
+  let applyingHash = false;
+
+  const unwatchHash = ports.watchHash((hash) => {
+    applyingHash = true;
+    dispatch({
+      type: "region-selected",
+      region: parseRegionHash(hash, REGION_HASH_NAME) ?? WHOLE_COUNTRY,
+    });
+    applyingHash = false;
+  });
+
   /** 背景地図の選択を地図に渡す。塗り分けとは別に、すぐに反映する */
   const applyBasemap = (view: MapView): void => {
     const shown = view.setBasemap(getState().basemap);
@@ -304,9 +365,17 @@ export const createApp = <Container>(
       a.unit !== b.unit ||
       a.year !== b.year ||
       a.indicator !== b.indicator ||
-      a.datasets !== b.datasets
+      a.datasets !== b.datasets ||
+      a.region !== b.region
     ) {
       requestRender();
+    }
+    if (a.region !== b.region && !applyingHash) {
+      // 画面で地域を変えたとき。URL にも載せ、選んだ都道府県が映るように地図を動かす
+      ports.replaceHash(formatRegionHash(ports.readHash(), REGION_HASH_NAME, a.region));
+      if (map !== null) {
+        void fitRegion(map, a.region);
+      }
     }
     if (a.basemap !== b.basemap && map !== null) {
       applyBasemap(map);
@@ -319,6 +388,7 @@ export const createApp = <Container>(
   const resetMapState = (): void => {
     appliedKey = null;
     meshLayer = null;
+    meshLayerRegion = null;
     applied = null;
     setRuntime({ joinedClassification: null });
   };
@@ -352,6 +422,15 @@ export const createApp = <Container>(
     // 作ったばかりの地図は既定の背景地図と不透明の塗り。地図を作り直したときも、選んでいたものに合わせる
     applyBasemap(map);
     applyFillOpacity(map);
+    if (fitsRegionOnAttach) {
+      const view = map;
+      // 塗り分けの読み込みを待たせない。合わせ終えたら、地図を作り直しても合わせ直さない
+      void fitRegion(view, getState().region).then((fitted) => {
+        if (fitted) {
+          fitsRegionOnAttach = false;
+        }
+      });
+    }
     await render();
     return ok(undefined);
   };
@@ -529,6 +608,7 @@ export const createApp = <Container>(
 
   const dispose = async (): Promise<void> => {
     unsubscribeStore();
+    unwatchHash();
     unsubscribeChannel?.();
     detachMap();
     channel?.close();

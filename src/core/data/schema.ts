@@ -3,7 +3,7 @@
 // 変えるときは他のトラックに影響するので相談する（docs/design/implementation-plan.md）。
 
 /** 配信するデータの版。パスに含め、更新のたびに上げる（docs/design/map-and-hosting.md） */
-export const DATA_VERSION = "v1";
+export const DATA_VERSION = "v2";
 
 export const DATA_FILES = {
   meshIndicators: "mesh_indicators.parquet",
@@ -12,6 +12,14 @@ export const DATA_FILES = {
   adminGeomIndex: "admin_geom/index.json",
   places: "places.json",
 } as const;
+
+/**
+ * 都道府県ごとのメッシュのファイル（地域モード）。prefCode は2桁。
+ * 列は mesh_indicators.parquet と同じで、行はその都道府県の市区町村にかかるメッシュだけを、メッシュコードの順に持つ。
+ * 県境のメッシュは、またぐ都道府県のファイルのそれぞれに入り、値はどれも全国のファイルと同じ（メッシュ全体の合計）
+ */
+export const meshPrefFile = (prefCode: string): `mesh_pref/${string}.parquet` =>
+  `mesh_pref/${prefCode}.parquet`;
 
 /** 範囲。西端の経度、南端の緯度、東端の経度、北端の緯度の順 */
 export type BBox = readonly [number, number, number, number];

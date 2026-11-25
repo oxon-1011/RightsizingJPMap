@@ -24,6 +24,8 @@ const FIXTURES: Partial<Record<DataFile, string>> = {
   "mesh_indicators.parquet": "tests/fixtures/mesh_indicators.tottori.parquet",
   "municipal_indicators.parquet": "tests/fixtures/municipal_indicators.tottori.parquet",
   "admin_geom/31.parquet": "tests/fixtures/admin_geom.tottori.parquet",
+  // 鳥取県の分の mesh_indicators.parquet は、mesh_pref/31.parquet と同じ行を持つ（tests/fixtures/README.md）
+  "mesh_pref/31.parquet": "tests/fixtures/mesh_indicators.tottori.parquet",
 };
 
 const fixtureBytes = (file: DataFile): Uint8Array | null => {
@@ -219,14 +221,31 @@ export type TestPortsOptions = {
   readonly grantPersistence?: boolean;
   /** true なら requestPersistence が解決しない（Firefox で利用者が許可の表示に答えていないとき） */
   readonly holdPersistence?: boolean;
+  /** 起動したときの URL の # 以降（先頭の # を含む） */
+  readonly hash?: string;
+  /** 生成物の Parquet の別名。左のファイルを求められたら、右のファイルのテスト用データを返す */
+  readonly parquetAliases?: Partial<Record<DataFile, DataFile>>;
+};
+
+/** テスト用の口が、テストのために足して持つもの */
+export type TestPortsExtras = {
+  readonly errors: AppError[];
+  readonly persistRequests: number[];
+  /** openBaseParquet で開いたファイル。開いた順 */
+  readonly openedParquet: DataFile[];
+  /** いまの URL の # 以降 */
+  readonly hash: () => string;
+  /** 利用者が URL の # 以降を書き換えたことにする（hashchange） */
+  readonly changeHash: (hash: string) => void;
 };
 
 /** テスト用の口。地図の要素の型は文字列にする */
-export const testPorts = (
-  options: TestPortsOptions = {},
-): AppPorts<string> & { readonly errors: AppError[]; readonly persistRequests: number[] } => {
+export const testPorts = (options: TestPortsOptions = {}): AppPorts<string> & TestPortsExtras => {
   const errors: AppError[] = [];
   const persistRequests: number[] = [];
+  const openedParquet: DataFile[] = [];
+  let hash = options.hash ?? "";
+  const hashListeners = new Set<(hash: string) => void>();
   const locks = options.locks ?? fakeLocks();
   const channels = options.channels ?? fakeChannels();
   const storage = options.storage ?? fakeOpfs();
@@ -239,6 +258,22 @@ export const testPorts = (
   return {
     errors,
     persistRequests,
+    openedParquet,
+    hash: () => hash,
+    changeHash: (next) => {
+      hash = next;
+      for (const listener of hashListeners) {
+        listener(next);
+      }
+    },
+    readHash: () => hash,
+    replaceHash: (next) => {
+      hash = next;
+    },
+    watchHash: (listener) => {
+      hashListeners.add(listener);
+      return () => hashListeners.delete(listener);
+    },
     openStorage: () => Promise.resolve(storage),
     acquireWriterLock: locks.acquire,
     openManifestChannel: channels.open,
@@ -250,7 +285,8 @@ export const testPorts = (
     },
     isPersisted: () => Promise.resolve(ok(options.persisted ?? false)),
     openBaseParquet: (file) => {
-      const bytes = fixtureBytes(file);
+      openedParquet.push(file);
+      const bytes = fixtureBytes(options.parquetAliases?.[file] ?? file);
       return bytes === null
         ? Promise.resolve(err({ kind: "fetch-failed", message: file }))
         : openParquetBuffer(bytes.slice().buffer);

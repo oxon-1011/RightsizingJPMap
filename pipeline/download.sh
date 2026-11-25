@@ -26,5 +26,6 @@ gh release download "data-$version" --dir "$dest"
 cd "$dest"
 shasum -a 256 -c SHA256SUMS
 tar -xf admin_geom.tar
-rm admin_geom.tar SHA256SUMS
+tar -xf mesh_pref.tar
+rm admin_geom.tar mesh_pref.tar SHA256SUMS
 echo "data-$version を $dest に取り出した"

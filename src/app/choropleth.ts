@@ -17,7 +17,15 @@ import {
   perPopulationByCode,
   perPopulationByMesh,
 } from "../core/join/per-population";
-import type { MeshGeometry } from "../core/mesh/geometry";
+import { buildMeshGeometry, type MeshGeometry } from "../core/mesh/geometry";
+import {
+  isInRegion,
+  isWholeCountry,
+  type Region,
+  regionKey,
+  restrictCodeValues,
+  restrictMeshValues,
+} from "../core/region/region";
 import { err, ok, type Result } from "../core/result";
 import type { AppState, IndicatorSelection } from "../core/state/state";
 import type { DatasetEntry } from "../core/storage/manifest";
@@ -28,7 +36,8 @@ import type { AppError } from "./ports";
 /**
  * 塗り分けの値。メッシュは geometry と同じ順の値、行政区域は団体コードごとの値。
  * メッシュの codes は値の順のメッシュコードで、ベースデータの指標では MeshBase.codes そのもの、
- * 結合した指標では集計したメッシュ（MeshAggregate.keys）である
+ * 結合した指標では集計したメッシュ（MeshAggregate.keys）である。
+ * 地域モードでは、メッシュは地域のものだけを持ち、行政区域は地域の外の値を値なし（NaN）にする
  */
 export type Choropleth =
   | {
@@ -46,20 +55,24 @@ export type Choropleth =
       readonly joined: boolean;
     };
 
+/** 塗り分けを決める状態 */
+export type ChoroplethState = Pick<AppState, "unit" | "year" | "indicator" | "region">;
+
 /**
  * 塗り分けを決める状態の組を表す文字列。同じなら塗り分けを作り直さない。
  * 地図の deck.gl のレイヤーに渡す colorKey にも使う（色を作り直したことを知らせる）。
  */
-export const choroplethKey = (state: Pick<AppState, "unit" | "year" | "indicator">): string => {
+export const choroplethKey = (state: ChoroplethState): string => {
   const { unit, year, indicator } = state;
+  const scope = `${regionKey(state.region)}/${unit}/${year}`;
   switch (indicator.kind) {
     case "base":
-      return `${unit}/${year}/base/${indicator.id}`;
+      return `${scope}/base/${indicator.id}`;
     case "joined": {
       const { measure, perPopulation } = indicator;
       const measureKey = measure.kind === "count" ? "count" : `sum:${measure.column}`;
       const per = perPopulation === null ? "none" : `${perPopulation.base}:${perPopulation.per}`;
-      return `${unit}/${year}/joined/${indicator.datasetId}/${measureKey}/${per}`;
+      return `${scope}/joined/${indicator.datasetId}/${measureKey}/${per}`;
     }
     default: {
       const unreachable: never = indicator;
@@ -76,17 +89,18 @@ const indicatorError = (message: string): AppError => ({
 
 type Sources = { readonly base: BaseData; readonly datasets: DatasetCache };
 
-/** メッシュのベースの指標の値。行の順は MeshBase.codes と同じ */
+/** メッシュのベースの指標の値。行の順は、その地域の MeshBase.codes と同じ */
 const baseMeshValues = async (
   base: BaseData,
+  region: Region,
   id: Parameters<typeof computeMeshIndicator>[0],
   year: number,
 ): Promise<Result<Float32Array, AppError>> => {
-  const mesh = await base.mesh();
+  const mesh = await base.mesh(region);
   if (!mesh.ok) {
     return mesh;
   }
-  const columns = await base.meshColumns(meshColumnsToRead(id, year));
+  const columns = await base.meshColumns(region, meshColumnsToRead(id, year));
   if (!columns.ok) {
     return columns;
   }
@@ -123,42 +137,88 @@ const findDataset = (
   return entry === undefined ? err({ kind: "dataset", id, message: "目録にない" }) : ok(entry);
 };
 
+/**
+ * 結合の集計を、地域のメッシュだけにする。全国ならそのまま返す。
+ * 地域のメッシュは、地域のベースデータにあるメッシュである。ベースデータにないメッシュ（人のいないメッシュ）は、
+ * どの都道府県のものかを決める材料がないので、地域モードでは描かない
+ */
+const scopedMeshJoin = async (
+  sources: Sources,
+  region: Region,
+  join: { readonly keys: Uint32Array; readonly geometry: MeshGeometry },
+  numerators: ArrayLike<number>,
+): Promise<
+  Result<
+    {
+      readonly keys: Uint32Array;
+      readonly geometry: MeshGeometry;
+      readonly numerators: ArrayLike<number>;
+    },
+    AppError
+  >
+> => {
+  if (isWholeCountry(region)) {
+    return ok({ ...join, numerators });
+  }
+  const mesh = await sources.base.mesh(region);
+  if (!mesh.ok) {
+    return mesh;
+  }
+  const scoped = restrictMeshValues(join.keys, numerators, mesh.value.lookup);
+  return ok({
+    keys: scoped.meshes,
+    geometry: buildMeshGeometry(scoped.meshes),
+    numerators: scoped.values,
+  });
+};
+
 const joinedMesh = async (
   sources: Sources,
   entry: DatasetEntry,
   indicator: JoinedSelection,
   year: number,
+  region: Region,
 ): Promise<Result<Choropleth, AppError>> => {
   const join = await sources.datasets.meshJoin(entry);
   if (!join.ok) {
     return join;
   }
-  const { aggregate, geometry } = join.value;
-  const numerators = measureValues(aggregate, indicator.measure);
-  if (numerators === null) {
+  const all = measureValues(join.value.aggregate, indicator.measure);
+  if (all === null) {
     return err({ kind: "dataset", id: entry.id, message: "合計する列がない" });
   }
+  const scoped = await scopedMeshJoin(
+    sources,
+    region,
+    { keys: join.value.aggregate.keys, geometry: join.value.geometry },
+    all,
+  );
+  if (!scoped.ok) {
+    return scoped;
+  }
+  const { keys, geometry, numerators } = scoped.value;
   const { perPopulation } = indicator;
   if (perPopulation === null) {
     return ok({
       unit: "mesh",
-      codes: aggregate.keys,
+      codes: keys,
       geometry,
       values: numerators,
+      // 区切りは、表示している地域の値の分位で決める
       classification: joinedClassification(numerators),
       joined: true,
     });
   }
-  const mesh = await sources.base.mesh();
+  const mesh = await sources.base.mesh(region);
   if (!mesh.ok) {
     return mesh;
   }
   const perPopulationAt = async (y: number): Promise<Result<Float32Array, AppError>> => {
-    const baseValues = await baseMeshValues(sources.base, perPopulation.base, y);
+    const baseValues = await baseMeshValues(sources.base, region, perPopulation.base, y);
     return baseValues.ok
       ? ok(
           perPopulationByMesh({
-            meshes: aggregate.keys,
+            meshes: keys,
             numerators,
             lookup: mesh.value.lookup,
             baseValues: baseValues.value,
@@ -181,7 +241,7 @@ const joinedMesh = async (
   }
   return ok({
     unit: "mesh",
-    codes: aggregate.keys,
+    codes: keys,
     geometry,
     values: values.value,
     classification: joinedClassification(forBreaks.value),
@@ -196,11 +256,16 @@ const joinedMesh = async (
 const fillValue = (entry: DatasetEntry, indicator: JoinedSelection): number =>
   entry.kind === "point" && indicator.measure.kind === "count" ? 0 : Number.NaN;
 
+/** 区切りを作る値。地域の区域の値だけを使う（地域の外は値なしにしてあるので、分位に入らない） */
+const classificationValues = (values: ReadonlyMap<string, number>, region: Region): number[] =>
+  [...values].filter(([code]) => isInRegion(code, region)).map(([, value]) => value);
+
 const joinedMunicipal = async (
   sources: Sources,
   entry: DatasetEntry,
   indicator: JoinedSelection,
   year: number,
+  region: Region,
 ): Promise<Result<Choropleth, AppError>> => {
   const aggregate = await sources.datasets.codeJoin(entry);
   if (!aggregate.ok) {
@@ -214,18 +279,21 @@ const joinedMunicipal = async (
   if (!municipal.ok) {
     return municipal;
   }
-  const completed = completeCodeValues(
-    aggregate.value.keys,
-    numerators,
-    municipal.value.paintedCodes,
-    fillValue(entry, indicator),
+  const completed = restrictCodeValues(
+    completeCodeValues(
+      aggregate.value.keys,
+      numerators,
+      municipal.value.paintedCodes,
+      fillValue(entry, indicator),
+    ),
+    region,
   );
   const { perPopulation } = indicator;
   if (perPopulation === null) {
     return ok({
       unit: "municipality",
       values: completed,
-      classification: joinedClassification([...completed.values()]),
+      classification: joinedClassification(classificationValues(completed, region)),
       joined: true,
     });
   }
@@ -272,25 +340,26 @@ const joinedChoropleth = (
   entry: DatasetEntry,
   indicator: JoinedSelection,
   year: number,
+  region: Region,
 ): Promise<Result<Choropleth, AppError>> =>
   unit === "mesh"
-    ? joinedMesh(sources, entry, indicator, year)
-    : joinedMunicipal(sources, entry, indicator, year);
+    ? joinedMesh(sources, entry, indicator, year, region)
+    : joinedMunicipal(sources, entry, indicator, year, region);
 
 /** いまの状態の塗り分けを作る。指標が塗れることは core の reduce が保っている */
 export const computeChoropleth = async (
   sources: Sources,
-  state: Pick<AppState, "unit" | "year" | "indicator" | "datasets">,
+  state: ChoroplethState & Pick<AppState, "datasets">,
 ): Promise<Result<Choropleth, AppError>> => {
-  const { unit, year, indicator } = state;
+  const { unit, year, indicator, region } = state;
   switch (indicator.kind) {
     case "base": {
       if (unit === "mesh") {
-        const mesh = await sources.base.mesh();
+        const mesh = await sources.base.mesh(region);
         if (!mesh.ok) {
           return mesh;
         }
-        const values = await baseMeshValues(sources.base, indicator.id, year);
+        const values = await baseMeshValues(sources.base, region, indicator.id, year);
         return values.ok
           ? ok({
               unit,
@@ -306,7 +375,7 @@ export const computeChoropleth = async (
       return values.ok
         ? ok({
             unit,
-            values: values.value,
+            values: restrictCodeValues(values.value, region),
             classification: classificationOf(indicator.id, unit),
             joined: false,
           })
@@ -314,7 +383,9 @@ export const computeChoropleth = async (
     }
     case "joined": {
       const entry = findDataset(state.datasets, indicator.datasetId);
-      return entry.ok ? joinedChoropleth(sources, unit, entry.value, indicator, year) : entry;
+      return entry.ok
+        ? joinedChoropleth(sources, unit, entry.value, indicator, year, region)
+        : entry;
     }
     default: {
       const unreachable: never = indicator;

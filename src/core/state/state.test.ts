@@ -287,6 +287,35 @@ describe("塗りの不透明度", () => {
   });
 });
 
+describe("地域", () => {
+  it("はじめは全国で、都道府県を入れたり外したりできる。ほかの状態は変えない", () => {
+    expect(INITIAL_STATE.region).toEqual([]);
+    const one = reduce(INITIAL_STATE, { type: "region-toggled", code: "20", selected: true });
+    expect(one).toEqual({ ...INITIAL_STATE, region: ["20"] });
+    const two = reduce(one, { type: "region-toggled", code: "19", selected: true });
+    expect(two.region).toEqual(["19", "20"]);
+    expect(reduce(two, { type: "region-toggled", code: "20", selected: false }).region).toEqual([
+      "19",
+    ]);
+  });
+
+  it("まとめて決めるときは、重複を除いて昇順に並べる", () => {
+    const state = reduce(INITIAL_STATE, { type: "region-selected", region: ["20", "19", "20"] });
+    expect(state.region).toEqual(["19", "20"]);
+    expect(reduce(state, { type: "region-selected", region: [] }).region).toEqual([]);
+  });
+
+  it("地域が変わらなければ、同じ状態を返す", () => {
+    const state = reduce(INITIAL_STATE, { type: "region-selected", region: ["19", "20"] });
+    expect(reduce(state, { type: "region-selected", region: ["20", "19"] })).toBe(state);
+    expect(reduce(state, { type: "region-toggled", code: "20", selected: true })).toBe(state);
+    expect(reduce(INITIAL_STATE, { type: "region-toggled", code: "20", selected: false })).toBe(
+      INITIAL_STATE,
+    );
+    expect(reduce(INITIAL_STATE, { type: "region-selected", region: [] })).toBe(INITIAL_STATE);
+  });
+});
+
 describe("nearestYear", () => {
   it("最も近い年を選び、同じ近さなら後の年にする", () => {
     expect(nearestYear(2070, [2020, 2025, 2050])).toBe(2050);

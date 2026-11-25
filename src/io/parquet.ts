@@ -113,9 +113,23 @@ const columnsOf = (metadata: FileMetaData): readonly ParquetColumnInfo[] =>
     nullable: element.repetition_type !== "REQUIRED",
   }));
 
-const openAsyncBuffer = async (file: AsyncBuffer): Promise<Result<ParquetFile, ParquetError>> => {
+/**
+ * URL の Parquet で、メタデータを読むために最初に取得する末尾の大きさ。
+ * hyparquet の既定は 512KB で、都道府県ごとのメッシュのファイル（mesh_pref、0.2〜2.5MB）では
+ * 指標の列より大きな通信になる。生成物のメタデータは 6〜11KB（2026-11-25 に DuckDB の
+ * parquet_file_metadata で確かめた）なので、32KB にする。これより大きければ、hyparquet が足りない分を取り直す
+ */
+export const URL_FOOTER_FETCH_BYTES = 1 << 15;
+
+const openAsyncBuffer = async (
+  file: AsyncBuffer,
+  initialFetchSize?: number,
+): Promise<Result<ParquetFile, ParquetError>> => {
   try {
-    const metadata = await parquetMetadataAsync(file);
+    const metadata = await parquetMetadataAsync(
+      file,
+      initialFetchSize === undefined ? {} : { initialFetchSize },
+    );
     return ok({ numRows: Number(metadata.num_rows), columns: columnsOf(metadata), file, metadata });
   } catch (e) {
     return err({ kind: "invalid-file", message: messageOf(e) });
@@ -169,7 +183,7 @@ export const openParquetUrl = async (
   } catch (e) {
     return err({ kind: "fetch-failed", message: messageOf(e) });
   }
-  return openAsyncBuffer(file);
+  return openAsyncBuffer(file, URL_FOOTER_FETCH_BYTES);
 };
 
 /** メモリ上のバイト列の Parquet のメタデータを読む */

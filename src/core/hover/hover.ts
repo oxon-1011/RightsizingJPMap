@@ -6,6 +6,7 @@ import { meshIndicatorColumns, type PopulationIndicatorId } from "../indicators/
 import type { MunicipalNames } from "../indicators/municipal";
 import type { MeshLookup } from "../join/per-population";
 import { latLonToMeshCode } from "../mesh/mesh-code";
+import { isInRegion, type Region } from "../region/region";
 import type { IndicatorSelection } from "../state/state";
 
 /** カードに出す値。秘匿（D7）と値なしを、数と分けて持つ */
@@ -70,6 +71,8 @@ export type ChoroplethHoverData =
         readonly values: ReadonlyMap<string, number>;
       } | null;
       readonly names: MunicipalNames;
+      /** 地域モードの地域。地域の外の区域にはカードを出さない */
+      readonly region: Region;
     });
 
 /**
@@ -278,8 +281,9 @@ const municipalityContent = (
 ): HoverContent | null => {
   const code = hit.municipalityCode;
   const name = code === null ? undefined : data.names.areas.get(code);
-  // 値の表にない区域（値のない北方領土の6村）には出さない。メッシュでベースデータにないメッシュに出さないのと同じ
-  if (code === null || name === undefined) {
+  // 値の表にない区域（値のない北方領土の6村）には出さない。メッシュでベースデータにないメッシュに出さないのと同じ。
+  // 地域の外の区域も、塗っていないので出さない
+  if (code === null || name === undefined || !isInRegion(code, data.region)) {
     return null;
   }
   return {

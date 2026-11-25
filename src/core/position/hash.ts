@@ -16,7 +16,8 @@ export type ZoomRange = { readonly minZoom: number; readonly maxZoom: number };
 /** 符号、整数部、小数部だけの 10 進の数。指数や空白は受け付けない */
 const DECIMAL = /^-?\d+(\.\d+)?$/;
 
-const params = (hash: string): readonly string[] =>
+/** # 以降を `&` で区切った、空でない `名前=値` の並び。地域（region/hash.ts）も同じ区切り方を使う */
+export const hashParams = (hash: string): readonly string[] =>
   hash
     .replace(/^#/, "")
     .split("&")
@@ -35,7 +36,7 @@ export const parsePositionHash = (
   range: ZoomRange,
 ): MapPosition | null => {
   const prefix = `${name}=`;
-  const param = params(hash).find((p) => p.startsWith(prefix));
+  const param = hashParams(hash).find((p) => p.startsWith(prefix));
   if (param === undefined) {
     return null;
   }
@@ -79,7 +80,7 @@ const positionValue = ({ zoom, lat, lon, bearing }: MapPosition): string => {
 export const formatPositionHash = (hash: string, name: string, position: MapPosition): string => {
   const prefix = `${name}=`;
   const next = `${prefix}${positionValue(position)}`;
-  const current = params(hash);
+  const current = hashParams(hash);
   const replaced = current.some((p) => p.startsWith(prefix))
     ? current.map((p) => (p.startsWith(prefix) ? next : p))
     : [...current, next];

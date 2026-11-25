@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { WHOLE_COUNTRY } from "../core/region/region";
 import type { DatasetEntry } from "../core/storage/manifest";
 import { createBaseData, MESH_COLUMN_CACHE_SIZE } from "./base-data";
 import { createDatasetCache, decodeDataset, decodeJson } from "./datasets";
@@ -161,14 +162,55 @@ describe("createBaseData", () => {
     const years = [2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070];
     const names = years.flatMap((y) => [`${y}_pop`, `${y}_p65`]);
     expect(names.length).toBeGreaterThan(MESH_COLUMN_CACHE_SIZE);
-    const columns = await base.meshColumns(names);
+    const columns = await base.meshColumns(WHOLE_COUNTRY, names);
     if (!columns.ok) {
       throw new Error(JSON.stringify(columns.error));
     }
     expect(Object.keys(columns.value)).toEqual(names);
     // 2回目は持っている列から返す
-    const again = await base.meshColumns(["2050_pop"]);
+    const again = await base.meshColumns(WHOLE_COUNTRY, ["2050_pop"]);
     expect(again.ok && again.value["2050_pop"]).toBe(columns.value["2050_pop"]);
+  });
+
+  it("地域のメッシュは、都道府県ごとのファイルだけから読む", async () => {
+    const ports = testPorts();
+    const base = createBaseData(ports);
+    const mesh = await base.mesh(["31"]);
+    const columns = await base.meshColumns(["31"], ["2050_pop"]);
+    if (!mesh.ok || !columns.ok) {
+      throw new Error("読めなかった");
+    }
+    expect(mesh.value.codes.length).toBe(1763);
+    expect(columns.value["2050_pop"]).toHaveLength(1763);
+    expect(ports.openedParquet).toEqual(["mesh_pref/31.parquet"]);
+  });
+
+  it("複数の都道府県のファイルを、重複のない昇順の並びに合わせる", async () => {
+    // 2つめのファイルにも鳥取県の分を使う。すべての行が県境のメッシュのように重なる場合にあたる
+    const ports = testPorts({ parquetAliases: { "mesh_pref/32.parquet": "mesh_pref/31.parquet" } });
+    const base = createBaseData(ports);
+    const single = await base.mesh(["31"]);
+    const merged = await base.mesh(["31", "32"]);
+    const one = await base.meshColumns(["31"], ["2050_pop", "2050_masked"]);
+    const two = await base.meshColumns(["31", "32"], ["2050_pop", "2050_masked"]);
+    if (!single.ok || !merged.ok || !one.ok || !two.ok) {
+      throw new Error("読めなかった");
+    }
+    expect(merged.value.codes).toEqual(single.value.codes);
+    expect(merged.value.geometry.length).toBe(1763);
+    expect(two.value["2050_pop"]).toEqual(one.value["2050_pop"]);
+    expect(two.value["2050_masked"]).toEqual(one.value["2050_masked"]);
+    // 鳥取県のファイルは、2つの地域で1回しか開かない
+    expect(ports.openedParquet).toEqual(["mesh_pref/31.parquet", "mesh_pref/32.parquet"]);
+  });
+
+  it("地域のファイルのどれかを読めなければ失敗", async () => {
+    const base = createBaseData(testPorts());
+    const mesh = await base.mesh(["31", "32"]);
+    expect(mesh).toMatchObject({
+      ok: false,
+      error: { kind: "base-data", file: "mesh_pref/32.parquet" },
+    });
   });
 
   it("市区町村の表と、地図で塗る単位の団体コードを作る", async () => {

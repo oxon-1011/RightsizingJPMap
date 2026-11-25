@@ -5,6 +5,7 @@ import { type BBox, DATA_FILES } from "../core/data/schema";
 import type { DataFile } from "../core/data/url";
 import { err, ok, type Result } from "../core/result";
 import { fetchBytes, readBlobBytes } from "../io/bytes";
+import { readHash, replaceHash, watchHash } from "../io/hash";
 import {
   BASEMAP_STYLE_FILE,
   fitBBox,
@@ -22,17 +23,12 @@ import { acquireWriterLock, openManifestChannel } from "../io/tabs";
 import { baseDataUrl, publicFileUrl } from "./data-url";
 import { decodeJson } from "./datasets";
 import { createDuckDbEngine } from "./duckdb-engine";
+import { POSITION_HASH_NAME } from "./hash-names";
 import { ATTRIBUTION_DETAILS_URL } from "./links";
 import type { AppPorts, FetchError, MapView } from "./ports";
 
 /** 最初に映す範囲。日本の全体（与那国島から宗谷岬まで）が収まる。URL に位置があれば、そちらを映す */
 export const INITIAL_BOUNDS: BBox = [122.9, 24.0, 146.0, 45.6];
-
-/**
- * 地図の位置を URL に載せるときの名前。URL は `#map=ズーム/緯度/経度` になり、北が上でなければ向きが続く。
- * 名前を付けるのは、# 以降にほかの値を足せるようにするためである
- */
-export const POSITION_HASH_NAME = "map";
 
 /** 生成物のファイル全体を読む。admin_geom の都道府県のファイル（数百 KB）と、小さな JSON に使う */
 const fetchBaseBytes = async (file: DataFile): Promise<Result<Uint8Array, FetchError>> => {
@@ -93,6 +89,9 @@ export const browserPorts = (): AppPorts<HTMLElement> => ({
   readBlob,
   tables: createDuckDbEngine(),
   startMap: startMapView,
+  readHash,
+  replaceHash,
+  watchHash,
   now: () => new Date().toISOString(),
   newId: () => crypto.randomUUID(),
   report: (error) => console.error("[RightsizingJPMap]", error),

@@ -16,7 +16,7 @@ mise run pipeline:fixtures   # tests/fixtures/ に鳥取県の分を書き出し
 手元の Mac で（2026-11-07）、最初から検証の終わりまでおよそ 3 分（173 秒） かかった。
 
 段階を選んで流すときは、`mise exec -- bash pipeline/build.sh <段階...>` を使う。
-段階は `fetch`、`mesh`、`municipal`、`admin`、`tiles`、`admin_geom`、`places`、`check`、`fixtures`、`clean` で、`check:<名前>` は `checks/<名前>.sql` だけを流す。
+段階は `fetch`、`mesh`、`mesh_pref`、`municipal`、`admin`、`tiles`、`admin_geom`、`places`、`check`、`fixtures`、`clean` で、`check:<名前>` は `checks/<名前>.sql` だけを流す。
 
 ## 使う道具と入力
 
@@ -40,26 +40,29 @@ mise run pipeline:fixtures   # tests/fixtures/ に鳥取県の分を書き出し
 
 生成物は、データの版（`src/core/data/schema.ts` の `DATA_VERSION`）ごとに、`data-<版>` の Release のアセットとして置く。
 `data-v1` は 2026-11-07 に登録した。
+`data-v2` は、都道府県ごとのメッシュのファイル（`mesh_pref/`）を足した版である。
+ほかの生成物は `data-v1` と同じで、作り直していない。
 
-Release のアセットはディレクトリを持てないので、`admin_geom/` は tar にまとめる。
+Release のアセットはディレクトリを持てないので、`admin_geom/` と `mesh_pref/` は tar にまとめる。
 中身は zstd で圧縮済みなので、tar は圧縮しない。
 macOS の拡張属性を入れないよう、次のように作る。
 
 ```bash
 cd pipeline/out
 COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs --format ustar -cf admin_geom.tar admin_geom
-shasum -a 256 mesh_indicators.parquet municipal_indicators.parquet admin.pmtiles places.json admin_geom.tar > SHA256SUMS
+COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs --format ustar -cf mesh_pref.tar mesh_pref
+shasum -a 256 mesh_indicators.parquet municipal_indicators.parquet admin.pmtiles places.json admin_geom.tar mesh_pref.tar > SHA256SUMS
 ```
 
-登録するアセットは、`mesh_indicators.parquet`、`municipal_indicators.parquet`、`admin.pmtiles`、`admin_geom.tar`、`places.json`、`SHA256SUMS` の6つである。
+登録するアセットは、`mesh_indicators.parquet`、`municipal_indicators.parquet`、`admin.pmtiles`、`admin_geom.tar`、`mesh_pref.tar`、`places.json`、`SHA256SUMS` の7つである。
 生成物は国土数値情報と社人研のデータを加工したものなので、Release の説明には出典と加工の表示を書く（書き方は `docs/user/attribution.md`）。
 
 取り出しは `download.sh` で行う。
-Release からアセットを取り出し、`SHA256SUMS` で照合してから `admin_geom.tar` を展開する。
+Release からアセットを取り出し、`SHA256SUMS` で照合してから `admin_geom.tar` と `mesh_pref.tar` を展開する。
 デプロイ（`.github/workflows/deploy.yml`）では `dist/data/<版>/` に、開発では `pipeline/out/` に置く。
 
 ```bash
-bash pipeline/download.sh --site dist   # デプロイ。dist/data/v1/ に置く
+bash pipeline/download.sh --site dist   # デプロイ。dist/data/v2/ に置く
 mise run data:download                  # 開発。pipeline/out/ に置く
 ```
 
@@ -69,10 +72,12 @@ mise run data:download                  # 開発。pipeline/out/ に置く
 ## 生成物
 
 大きさは 2026-11-07 に `mise run pipeline` で作ったものである。
+`mesh_pref/` だけは、2026-11-25 に `mesh_pref` の段階で作った。
 
 | ファイル | 段階 | 大きさ | 内容 |
 |---|---|---|---|
 | `mesh_indicators.parquet` | `mesh` | 28.7MB | 176,896 行 × 62 列。メッシュコードの順 |
+| `mesh_pref/<2桁>.parquet` | `mesh`、`mesh_pref` | 計 29.2MB | 47 ファイル、計 177,791 行 × 62 列。最大は `01.parquet` の 2.48MB（19,776 行）、最小は `47.parquet` の 245KB（1,351 行） |
 | `municipal_indicators.parquet` | `municipal` | 173KB | 1,947 地域 × 7 時点 = 13,629 行。code と year の順 |
 | `admin.pmtiles` | `admin`、`tiles` | 9.2MB | z0〜10。レイヤーは `pref`（47）と `muni`（1,886） |
 | `admin_geom/<2桁>.parquet` | `admin`、`admin_geom` | 計 18.6MB | 47 ファイル、1,886 区域。最大は `01.parquet` の 1.95MB |
@@ -93,9 +98,20 @@ DuckDB 2.0.0 の Parquet の書き出しは行数でしか行グループを区�
 1次メッシュごとに `UNION ALL` で流して `ROW_GROUP_SIZE 1` で書くと、どの行グループも1つの1次メッシュに収まる形にはできる（151 の1次メッシュが 193 の行グループになる）。
 ただし、そうするとフッターが 11KB から 918KB に、ファイルが 1.5MB 増える。
 さらに、全国の表示で4列を読むときの Range リクエストが、行グループと列の組の数（8 から 772）に増える。
-保留中の地域モードの目的は描画の負荷を下げることで、全国の4列（約 1.7MB）を読んでから行を絞っても目的は果たせる。
-そのため、全国の表示を重くしてまで行グループをそろえる理由はないと判断した。
-地域モードを採るときに読む量も減らしたくなったら、この方法で作り直せる。
+全国の表示を重くするので、行グループはそろえないと判断した。
+地域モード（2026-11-25）では、読む量を減らすために、行グループをそろえる代わりに都道府県ごとのファイルを足した（次の節）。
+
+### mesh_pref/<都道府県コード>.parquet
+
+地域モード（[docs/design/map-and-hosting.md](../docs/design/map-and-hosting.md)）が読む、都道府県ごとのメッシュのファイルである。
+`sql/mesh_pref.sql` で、元の推計の `shicode` から、メッシュと都道府県の組を作る。
+`shicode` には `22131_22132` のように複数のコードをつないだ値があるので、分けてから上2桁を見る。
+`sql/mesh_pref_copy.sql` が、都道府県ごとの COPY 文を組み立てる（`admin_geom` と同じやり方）。
+
+- 列は `mesh_indicators.parquet` と同じで、行をその都道府県のメッシュに絞るだけにする。
+- 行はメッシュコードの順に並べる。
+- 県境をまたぐメッシュ（895 個、どれも2県）は、両方の都道府県のファイルに入れる。値は全国のファイルと同じ、メッシュ全体の合計である。その都道府県の分だけに按分した値にはしない。全国の表示と数字を食い違わせないためである（2026-11-25、持ち主が決めた）。
+- `tests/fixtures/mesh_indicators.tottori.parquet` は、`mesh_pref/31.parquet` と同じ行を持つ。
 
 ### municipal_indicators.parquet
 
@@ -179,6 +195,10 @@ DuckDB 2.0.0 が自動で書くのは 1.0.0 で、bbox の列を宣言しない�
   - 出力（FLOAT）の全国合計は、総人口、年齢区分とも社人研と 1 人以内で一致する（最大の差は 0.04 人）。
   - PT00 は PT01〜PT20 の合計である（差は最大 9×10⁻¹¹）。秘匿のないメッシュでは PT00 と PTN が一致する。PT01 と PT20 の全国合計は、社人研の 0〜4 歳と 95 歳以上に一致する。
   - 秘匿記号の付いたメッシュは 2025 年 14,087、2050 年 4,037、2070 年 5,242 である。
+- **mesh_pref**（`checks/mesh_pref.sql`、2026-11-25）
+  - 01〜47 の 47 ファイルがあり、どのファイルも列の名前、型、順が `mesh_indicators.parquet` と同じで、メッシュコードの昇順に重複なく並ぶ。
+  - 行は、その都道府県の `shicode` を持つメッシュと一致し、値は `mesh_indicators.parquet` の同じメッシュの行と同じである。
+  - 合わせて 177,791 行で、メッシュは 176,896、2県にまたがるメッシュは 895、3県以上にまたがるメッシュはない。
 - **municipal_indicators**（`checks/municipal_indicators.sql`）
   - 列が契約どおりで、NULL がなく、(code, year) が重複せずにその順に並び、どの地域も7時点を持つ。
   - area_type ごとの件数は a 47、1 20、0 194、2 769、3 916、9 1 である。

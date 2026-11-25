@@ -10,7 +10,7 @@ io を呼んでよいのはこの層だけである。
 | ファイル | 内容 |
 |---|---|
 | `store.ts` | ストア。core の `reduce` で `state` を更新し、手続きの結果を `runtime` に持つ |
-| `create-app.ts` | 画面が呼ぶ手続きをまとめた `createApp`。起動、地図の描画、取り込み、削除、表示の変更、場所への移動 |
+| `create-app.ts` | 画面が呼ぶ手続きをまとめた `createApp`。起動、地図の描画、取り込み、削除、表示の変更、場所への移動、地域と URL の同期 |
 | `instance.ts` | 画面全体で1つの `app` と、React の部品でストアを読む `useAppStore` |
 | `ports.ts` | 手続きが使う副作用の口の型（`AppPorts`）。テストでは偽物を渡す |
 | `browser-ports.ts` | ブラウザの `AppPorts` を io の関数で作る。最初に映す範囲（`INITIAL_BOUNDS`）もここに置く |
@@ -18,14 +18,15 @@ io を呼んでよいのはこの層だけである。
 | `import.ts` | 取り込むファイルを読み、受け入れ条件を検査して、目録の項目を作る |
 | `duckdb-engine.ts` | DuckDB-WASM で表を読み、正規化した Parquet を書き、点を行政区域に割り当てる |
 | `sql.ts` | `duckdb-engine.ts` が使う SQL の組み立て（純粋な関数） |
-| `base-data.ts` | 生成物の Parquet と JSON の読み込みと、読んだ列の持ち回り |
+| `base-data.ts` | 生成物の Parquet と JSON の読み込みと、読んだ列の持ち回り。メッシュは地域ごとに読み、地域モードでは都道府県ごとのファイルだけを読んで合わせる |
 | `datasets.ts` | OPFS から読み直した自前データと、結合の集計の持ち回り |
 | `assign.ts` | 点を行政区域に割り当てる手続き（読む都道府県の選択と、spatial 拡張の呼び出し） |
-| `choropleth.ts` | いまの単位、指標、年の塗り分けの値と階級区分 |
+| `choropleth.ts` | いまの単位、指標、年、地域の塗り分けの値と階級区分 |
 | `overlays.ts` | 自前データの点、線、面のレイヤーの指定 |
 | `hover.ts` | ホバーのカード。地図のポインタの知らせからカードの中身を作り、カードだけのストアに置く |
 | `links.ts` | 画面から開く `docs/user/` の GitHub 上の URL |
 | `data-url.ts` | 生成物と `public/` のファイルの URL |
+| `hash-names.ts` | URL の `#` 以降に載せる値の名前（地図の位置の `map`、地域の `pref`） |
 
 ## 段階 7 での使い方
 
@@ -72,10 +73,11 @@ MapLibre の CSS（`.maplibregl-map` の `position: relative`）は Tailwind の
 | `DropOverlay` | ドラッグの深さ（画面の中の状態） | drop のファイルを `app.importFiles(files)` |
 | `NoticeList` | `state.notices`、`ACCEPTANCE_URL` | `app.dispatch({ type: "notice-dismissed", id })` |
 | `LayerPanel` | `state.datasets` | `app.changeDatasetStyle(id, style)`、`app.removeDataset(id)`、確かめてから `app.clearDatasets()` |
-| `PlaceSearch` | `runtime.places` の索引から core の `searchPlaces` で作った候補、`runtime.places.kind === "loading"` | 開くときに `app.loadPlaces()`、選んだら `app.moveToPlace(place)` |
+| `RegionPicker` | `state.region`、開閉（画面の中の状態） | `app.dispatch({ type: "region-toggled", code, selected })`、`app.dispatch({ type: "region-selected", region: [] })` |
+| `CommandPalette` | `runtime.places` の索引から core の `searchPlaces` で作った候補と、操作を合わせた項目（ui の `paletteItems`）、`runtime.places.kind === "loading"` | 開くときに `app.loadPlaces()`。場所を選んだら `app.moveToPlace(place)`、操作を選んだら `RegionPicker` を開く |
 | `HoverCard` | `useHoverStore((s) => s.card)`（`app.hover` のストア） | なし |
 
-`app.dispatch` が受け付けるのは、単位、年、指標、背景地図の表示の切り替えと、通知を閉じる操作だけである（`UiAction`）。
+`app.dispatch` が受け付けるのは、単位、年、指標、背景地図の表示、塗りの不透明度、地域の切り替えと、通知を閉じる操作だけである（`UiAction`）。
 データの追加と削除は目録を書くので、`importFiles`、`removeDataset`、`clearDatasets` を通す。
 単位、年、指標、データが変わると、`app` がストアの購読から地図を描き直すので、部品から描画を呼ぶ必要はない。
 背景地図の表示も、ストアの購読から地図に渡す。

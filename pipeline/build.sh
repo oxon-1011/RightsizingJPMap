@@ -5,6 +5,7 @@
 #   段階を省くと all（fetch から check まで）を流す。
 #   fetch      N03 の 2024 年版を取得して展開する
 #   mesh       mesh_indicators.parquet
+#   mesh_pref  mesh_pref/<都道府県コード>.parquet
 #   municipal  municipal_indicators.parquet
 #   admin      行政区域のポリゴンをまとめる（作業用のデータベース）
 #   tiles      admin.pmtiles
@@ -32,6 +33,7 @@ N03_SHA256="a03111be0fe726ff270cbc1dd16f38bc926cf814e67c8cd2e52157629d138b98"
 N03_DIR="$CACHE_DIR/n03"
 N03_SHP="$N03_DIR/N03-20240101.shp"
 ADMIN_DB="$WORK_DIR/admin.duckdb"
+MESH_PREF_DB="$WORK_DIR/mesh_pref.duckdb"
 
 # DuckDB の出力を、AI エージェント向けの表示ではなく通常の表示にする
 export DUCKDB_AGENT_MODE=0
@@ -94,6 +96,22 @@ stage_fetch() {
 stage_mesh() {
   log "mesh：mesh_indicators.parquet"
   duck :memory: "$SQL_DIR/mesh_indicators.sql"
+}
+
+stage_mesh_pref() {
+  log "mesh_pref：都道府県ごとの mesh_pref/<都道府県コード>.parquet"
+  [[ -f "$OUT_DIR/mesh_indicators.parquet" ]] || die "先に mesh を流す"
+  rm -rf "$OUT_DIR/mesh_pref"
+  mkdir -p "$OUT_DIR/mesh_pref"
+  rm -f "$MESH_PREF_DB" "$MESH_PREF_DB.wal"
+  duck "$MESH_PREF_DB" "$SQL_DIR/mesh_pref.sql"
+  # 都道府県ごとの COPY 文を SQL で組み立ててから流す（都道府県コードを元の推計から取るため）
+  duckdb -bail -batch -no-init -readonly -list -noheader "$MESH_PREF_DB" \
+    -f "$SQL_DIR/mesh_pref_copy.sql" > "$WORK_DIR/mesh_pref_copy.generated.sql"
+  duck "$MESH_PREF_DB" "$WORK_DIR/mesh_pref_copy.generated.sql"
+  # 作業用のデータベースは、書き出したあとは使わない
+  rm -f "$MESH_PREF_DB" "$MESH_PREF_DB.wal"
+  du -sh "$OUT_DIR/mesh_pref"
 }
 
 stage_municipal() {
@@ -204,10 +222,10 @@ main() {
       all)
         stage_clean
         mkdir -p "$OUT_DIR" "$WORK_DIR/tmp"
-        stage_fetch; stage_mesh; stage_municipal; stage_admin
+        stage_fetch; stage_mesh; stage_mesh_pref; stage_municipal; stage_admin
         stage_tiles; stage_admin_geom; stage_places; stage_check
         ;;
-      fetch | mesh | municipal | admin | tiles | admin_geom | places | check | fixtures | clean)
+      fetch | mesh | mesh_pref | municipal | admin | tiles | admin_geom | places | check | fixtures | clean)
         "stage_$s"
         mkdir -p "$OUT_DIR" "$WORK_DIR/tmp"
         ;;

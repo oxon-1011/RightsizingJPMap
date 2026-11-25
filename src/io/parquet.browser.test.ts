@@ -3,7 +3,13 @@ import { commands } from "vitest/browser";
 import type { Result } from "../core/result";
 import { type DuckDb, dropFile, query, readFileBytes, registerFile, startDuckDb } from "./duckdb";
 import { openStorage } from "./opfs";
-import { openParquetBuffer, openParquetUrl, type ParquetFile, readParquetColumns } from "./parquet";
+import {
+  openParquetBuffer,
+  openParquetUrl,
+  type ParquetFile,
+  readParquetColumns,
+  URL_FOOTER_FETCH_BYTES,
+} from "./parquet";
 
 const unwrap = <T, E>(result: Result<T, E>): T => {
   if (!result.ok) throw new Error(JSON.stringify(result.error));
@@ -282,9 +288,11 @@ describe("URL から Range リクエストで読む", () => {
       expect(get.range).toMatch(/^bytes=\d+-\d+$/);
       expect(get.status).toBe(206);
     }
-    // 末尾の取得（既定で 512KB）と b 列の範囲だけで済み、ファイル全体は読まない
+    // 末尾のメタデータの取得は URL_FOOTER_FETCH_BYTES（32KB）で、hyparquet の既定の 512KB より小さい
+    expect(requests[1]).toMatchObject({ bytes: URL_FOOTER_FETCH_BYTES });
+    // 末尾の取得と b 列の範囲だけで済み、ファイル全体は読まない
     const fetched = gets.reduce((sum, r) => sum + r.bytes, 0);
-    expect(fetched).toBeLessThan(fileSize * 0.6);
+    expect(fetched).toBeLessThan(fileSize * 0.3);
   });
 
   it("HEAD の Content-Length が圧縮後の大きさでも、元のファイルとして読める", async () => {
