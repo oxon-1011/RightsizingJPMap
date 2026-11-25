@@ -40,8 +40,8 @@ mise run pipeline:fixtures   # tests/fixtures/ に鳥取県の分を書き出し
 
 生成物は、データの版（`src/core/data/schema.ts` の `DATA_VERSION`）ごとに、`data-<版>` の Release のアセットとして置く。
 `data-v1` は 2026-11-07 に登録した。
-`data-v2` は、都道府県ごとのメッシュのファイル（`mesh_pref/`）を足した版である。
-ほかの生成物は `data-v1` と同じで、作り直していない。
+`data-v2` は、都道府県ごとのメッシュのファイル（`mesh_pref/`）を足した版で、2026-11-25 に登録した。
+ほかの生成物は `data-v1` と同じで、作り直していない（SHA-256 が `data-v1` の `SHA256SUMS` と一致することを確かめた）。
 
 Release のアセットはディレクトリを持てないので、`admin_geom/` と `mesh_pref/` は tar にまとめる。
 中身は zstd で圧縮済みなので、tar は圧縮しない。
